@@ -21,7 +21,8 @@ libcsp does not. Download from the original libcsp git, not the ABSat one as thi
 Run python3 waf configure --enable-shlib --install-csp --disable-stlib
 Run python3 waf build
 Run sudo python3 waf install
-Finally, copy over the csp folder in include to /usr/local/include/
+Copy over the csp folder in the root level include to /usr/local/include/
+Copy over the csp folder in the build include as well.
 
 gtest is similar to eigen3. Clone the repo, build with CMake, do make install.
     

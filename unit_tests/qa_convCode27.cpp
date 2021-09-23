@@ -38,7 +38,7 @@ using namespace ex2::sdr;
 
 #include "gtest/gtest.h"
 
-#define QA_CC27_DEBUG 0 // set to 1 for debugging output
+#define QA_CC27_DEBUG 1 // set to 1 for debugging output
 
 #define UHF_TRANSPARENT_MODE_PACKET_HEADER_LENGTH ( 72/8 ) // bytes
 #define UHF_TRANSPARENT_MODE_PACKET_LENGTH ( 128 )         // bytes; UHF transparent mode packet is always 128 bytes
@@ -121,7 +121,7 @@ TEST(CC27, Foo )
     for (unsigned long i = 0; i < iPayload.size(); i++) {
       same = same & (iPayload[i] == dPayload[i]);
       #if QA_CC27_DEBUG
-      printf("input[%d] = 0x%02x    encoded[%d] = 0x%02x    decoded[%d] = 0x%02x\n", i, iPayload[i], i, ePayload[i], i, dPayload[i]);
+      printf("input[%lu] = 0x%02x    encoded[%lu] = 0x%02x    decoded[%lu] = 0x%02x\n", i, iPayload[i], i, ePayload[i], i, dPayload[i]);
       #endif
     }
 

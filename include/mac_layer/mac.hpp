@@ -206,7 +206,7 @@ namespace ex2
        * mpdu contains a valid MPDU that should be transmitted. false if there
        * are no more MPDUs.
        */
-      bool nextMPDU(MPDU &mpdu);
+      bool nextMPDU();//MPDU &mpdu);
 
       /*!
        * @brief Accessor

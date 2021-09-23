@@ -34,7 +34,7 @@ double normal_rand(double mean, double std_dev)
 }
 
 unsigned char addnoise(int sym,double amp,double gain,double offset,int clip){
-  unsigned char sample;
+  char sample;
     
   sample = offset + gain*normal_rand(sym?amp:-amp,0);
   /* Clip to 8-bit offset range */

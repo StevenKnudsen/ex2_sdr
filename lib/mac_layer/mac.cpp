@@ -625,7 +625,7 @@ namespace ex2 {
      * are no more MPDUs.
      */
     bool
-    MAC::nextMPDU(MPDU &mpdu){
+    MAC::nextMPDU(){//MPDU &mpdu){
 
       // @TODO implement function
       return false;
