@@ -26,6 +26,8 @@ using namespace std;
 
 #include "gtest/gtest.h"
 
+#define QA_GOLAY_DEBUG 0 // set to 1 for debugging output
+
 /*!
  * @brief Factorial n!
  */
@@ -93,12 +95,14 @@ TEST(golay, CheckManyCorrectableErrors )
       uint32_t recd = codeword ^ pattern;
       // Decode
       int16_t decoded = golay_decode(recd);
-      printf("data     0x%08x\n", data);
-      printf("codeword 0x%08x\n", codeword);
-      printf("pattern  0x%08x\n", pattern);
-      printf("recd     0x%08x\n", recd);
-      printf("decode 0x%08x\n", decoded);
-      printf("-------------------\n");
+      #if QA_GOLAY_DEBUG
+        printf("data     0x%08x\n", data);
+        printf("codeword 0x%08x\n", codeword);
+        printf("pattern  0x%08x\n", pattern);
+        printf("recd     0x%08x\n", recd);
+        printf("decode 0x%08x\n", decoded);
+        printf("-------------------\n");
+      #endif
       // Check decoded is same as data
       ASSERT_TRUE(data == decoded) << "Oops, Golay failed!";
     } // num trials
@@ -128,7 +132,9 @@ TEST(golay, CheckManyUncorrectableErrors )
       uint32_t pattern = nBitErrorPattern(numBitErrors);
       // Apply the bit error tothe codeword to get received codeword
       uint32_t recd = codeword ^ pattern;
-      printf("pattern 0x%08x codeword 0x%08x recd 0x%08x\n", pattern, codeword, recd);
+      #if QA_GOLAY_DEBUG
+        printf("pattern 0x%08x codeword 0x%08x recd 0x%08x\n", pattern, codeword, recd);
+      #endif
       // Decode
       int16_t decoded = golay_decode(recd);
       // Check decoded is same as data

@@ -84,7 +84,9 @@ TEST(mpduHeader, ConstructorParemeterized )
     for (uint16_t e = (uint16_t) ErrorCorrection::ErrorCorrectionScheme::CCSDS_CONVOLUTIONAL_CODING_R_1_2;
         e < (uint16_t) ErrorCorrection::ErrorCorrectionScheme::LAST; e++) {
 
-      printf("scheme = %d\n",e);
+      #if QA_MPDUHEADER_DEBUG
+        printf("scheme = %d\n",e);
+      #endif
 
       errorCorrectionScheme = static_cast<ErrorCorrection::ErrorCorrectionScheme>(e);
       if (ErrorCorrection::isValid(errorCorrectionScheme)) {

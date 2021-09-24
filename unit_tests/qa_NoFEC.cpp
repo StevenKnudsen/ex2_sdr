@@ -47,7 +47,7 @@ using namespace ex2::sdr;
  * @brief Test Main Constructors, the one that is parameterized, and the one
  * that takes the received packet as input
  */
-TEST(noFEC, Foo )
+TEST(noFEC, DecodeTest )
 {
   /* ---------------------------------------------------------------------
    * Confirm the NoFEC object can be constructed
@@ -61,7 +61,7 @@ TEST(noFEC, Foo )
   csp_init(&cspConf);
 
   // Set the length of the test CSP packet so it all fits into a transparent mode payload
-  const unsigned long int testCSPPacketLength = 10;
+  const unsigned long int testCSPPacketLength = 2048;
 
   FEC * noFEC = new NoFEC(ErrorCorrection::ErrorCorrectionScheme::NO_FEC);
 

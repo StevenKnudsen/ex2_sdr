@@ -43,11 +43,12 @@ using namespace ex2::sdr;
 #define UHF_TRANSPARENT_MODE_PACKET_HEADER_LENGTH ( 72/8 ) // bytes
 #define UHF_TRANSPARENT_MODE_PACKET_LENGTH ( 128 )         // bytes; UHF transparent mode packet is always 128 bytes
 #define UHF_TRANSPARENT_MODE_PACKET_PAYLOAD_LENGTH ( UHF_TRANSPARENT_MODE_PACKET_LENGTH - UHF_TRANSPARENT_MODE_PACKET_HEADER_LENGTH )
+
 /*!
  * @brief Test Main Constructors, the one that is parameterized, and the one
  * that takes the received packet as input
  */
-TEST(CC27, Foo )
+TEST(CC27, NoNoise_DecodeTest)
 {
   /* ---------------------------------------------------------------------
    * Confirm the CC27 object can be constructed
@@ -61,7 +62,7 @@ TEST(CC27, Foo )
   csp_init(&cspConf);
 
   // Set the length of the test CSP packet so it all fits into a transparent mode payload
-  const unsigned long int testCSPPacketLength = 10;
+  const unsigned long int testCSPPacketLength = 100;
 
   FEC * CC27 = new convCode27(ErrorCorrection::ErrorCorrectionScheme::CCSDS_CONVOLUTIONAL_CODING_R_1_2);
 
@@ -121,17 +122,114 @@ TEST(CC27, Foo )
     for (unsigned long i = 0; i < iPayload.size(); i++) {
       same = same & (iPayload[i] == dPayload[i]);
       #if QA_CC27_DEBUG
-      printf("input[%lu] = 0x%02x    encoded[%lu] = 0x%02x    decoded[%lu] = 0x%02x\n", i, iPayload[i], i, ePayload[i], i, dPayload[i]);
+        printf("input[%lu] = 0x%02x    encoded[%lu] = 0x%02x    decoded[%lu] = 0x%02x\n", i, iPayload[i], i, ePayload[i], i, dPayload[i]);
       #endif
     }
 
 
     ASSERT_TRUE(same) << "decoded payload does not match input payload";
     ASSERT_TRUE(bitErrors == 0) << "Bit error count > 0";
-
-    // TODO: Add noise to the encoded symbols and see how many can decoder correct.
-
   }
+}
 
+TEST(CC27, Noisy_DecodeTest)
+{
+  /* ---------------------------------------------------------------------
+   * Confirm the CC27 object decodes errors!
+   * ---------------------------------------------------------------------
+   */
+
+  #define ERROR_RATE 0.05
+
+    // First do a little CSP config work
+  csp_conf_t cspConf;
+  csp_conf_get_defaults(&cspConf);
+  cspConf.buffer_data_size = 4096; // TODO set as CSP_MTU
+  csp_init(&cspConf);
+
+  // Set the length of the test CSP packet so it all fits into a transparent mode payload
+  const unsigned long int testCSPPacketLength = 100;
+
+  FEC * CC27 = new convCode27(ErrorCorrection::ErrorCorrectionScheme::CCSDS_CONVOLUTIONAL_CODING_R_1_2);
+
+  ASSERT_TRUE(CC27 != NULL) << "convCode27 failed to instantiate";
+
+  if (CC27) {
+    csp_packet_t * packet = (csp_packet_t *) csp_buffer_get(testCSPPacketLength);
+
+    if (packet == NULL) {
+      /* Could not get buffer element */
+      csp_log_error("Failed to get CSP buffer");
+      return;
+    }
+
+    int cspPacketHeaderLen = sizeof(packet->padding) + sizeof(packet->length) + sizeof(packet->id);
+
+    for (unsigned long i = 0; i < testCSPPacketLength; i++) {
+      packet->data[i] = i | 0x30; // ASCII numbers
+    }
+    // CSP forces us to do our own bookkeeping...
+    packet->length = testCSPPacketLength;
+
+    std::vector<uint8_t> p;
+
+    uint8_t * pptr = (uint8_t *) packet;
+    for (int i = 0; i < cspPacketHeaderLen; i++) {
+      p.push_back(pptr[i]);
+    }
+    // This is ugly, so maybe we need to rethink using PPDU_xx?
+    for (unsigned long i = 0; i < testCSPPacketLength; i++) {
+      p.push_back(packet->data[i]);
+    }
+
+    // @TODO maybe make these std::vector<uint8_t> ???
+    PPDU_u8 inputPayload(p);
+    PPDU_u8 encodedPayload = CC27->encode(inputPayload);
+
+    bool same = true;
+    std::vector<uint8_t> iPayload = inputPayload.getPayload();
+    std::vector<uint8_t> ePayload = encodedPayload.getPayload();
+    std::vector<uint8_t> mPayload = encodedPayload.getPayload();
+
+    // This is a repeatable test changing only one byte.
+    // mPayload[10] = 0xAA;
+
+    // Change random bytes in the encoded payload for a more randomized test.
+    unsigned int number_of_errors = (unsigned int) testCSPPacketLength*ERROR_RATE;
+
+    for (unsigned long i = 0; i < number_of_errors; i++) {
+      int error_index = rand() % mPayload.size();
+      mPayload[error_index] = (uint8_t) rand() % 255;
+    }
+
+    std::vector<uint8_t> dPayload;
+    uint32_t bitErrors = CC27->decode(mPayload, 100.0, dPayload);
+
+    same = true;
+    for (unsigned long i = 0; i < iPayload.size(); i++) {
+      same = same & (iPayload[i] == dPayload[i]);
+      #if QA_CC27_DEBUG
+        if(iPayload[i] != dPayload[i]) {
+          printf("Decode error in row %lu\n", i);
+        }
+        if(ePayload[i] == mPayload[i]) {
+          printf("data: 0x%02x -> 0x%02x, enc same: 0x%02x -> 0x%02x\n", iPayload[i], dPayload[i], ePayload[i], mPayload[i]);
+        } else {
+          printf("data: 0x%02x -> 0x%02x, enc error: 0x%02x -> 0x%02x\n", iPayload[i], dPayload[i], ePayload[i], mPayload[i]);
+        }
+      #endif
+    }
+
+
+    ASSERT_TRUE(same) << "decoded payload does not match input payload";
+    ASSERT_TRUE(bitErrors == 0) << "Bit error count > 0";
+  }
+}
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  // It seems like CSP may be crashing the tests randomly based on Meson help docs. This disables that feature.
+  setenv("MALLOC_PERTURB_", "0", 1);
+  return RUN_ALL_TESTS();
 }
 
