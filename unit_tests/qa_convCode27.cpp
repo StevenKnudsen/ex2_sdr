@@ -38,7 +38,7 @@ using namespace ex2::sdr;
 
 #include "gtest/gtest.h"
 
-#define QA_CC27_DEBUG 1 // set to 1 for debugging output
+#define QA_CC27_DEBUG 0 // set to 1 for debugging output
 
 #define UHF_TRANSPARENT_MODE_PACKET_HEADER_LENGTH ( 72/8 ) // bytes
 #define UHF_TRANSPARENT_MODE_PACKET_LENGTH ( 128 )         // bytes; UHF transparent mode packet is always 128 bytes
@@ -62,7 +62,7 @@ TEST(CC27, NoNoise_DecodeTest)
   csp_init(&cspConf);
 
   // Set the length of the test CSP packet so it all fits into a transparent mode payload
-  const unsigned long int testCSPPacketLength = 100;
+  const unsigned long int testCSPPacketLength = UHF_TRANSPARENT_MODE_PACKET_PAYLOAD_LENGTH;
 
   FEC * CC27 = new convCode27(ErrorCorrection::ErrorCorrectionScheme::CCSDS_CONVOLUTIONAL_CODING_R_1_2);
 
@@ -100,6 +100,8 @@ TEST(CC27, NoNoise_DecodeTest)
     for (unsigned long i = 0; i < testCSPPacketLength; i++) {
       p.push_back(packet->data[i]);
     }
+
+    csp_buffer_free(packet);
 
 //    // Look at the contents :-)
 //    for (int i = 0; i < p.size(); i++) {
@@ -139,7 +141,11 @@ TEST(CC27, Noisy_DecodeTest)
    * ---------------------------------------------------------------------
    */
 
-  #define ERROR_RATE 0.05
+  // This constant defines the number of single bitflip errors to apply.
+  // Each byte can only NUM_BITFLIPS_PER_BYTE bits flipped for the purposes of this test.
+  // Thus, at rate 0.99 with mask 0x01 the total bit error rate is ~12%.
+  #define BITFLIP_ERROR_RATE 0.5
+  #define BITFLIP_MASK 0b00010000
 
     // First do a little CSP config work
   csp_conf_t cspConf;
@@ -148,7 +154,7 @@ TEST(CC27, Noisy_DecodeTest)
   csp_init(&cspConf);
 
   // Set the length of the test CSP packet so it all fits into a transparent mode payload
-  const unsigned long int testCSPPacketLength = 100;
+  const unsigned long int testCSPPacketLength = UHF_TRANSPARENT_MODE_PACKET_PAYLOAD_LENGTH;
 
   FEC * CC27 = new convCode27(ErrorCorrection::ErrorCorrectionScheme::CCSDS_CONVOLUTIONAL_CODING_R_1_2);
 
@@ -182,6 +188,8 @@ TEST(CC27, Noisy_DecodeTest)
       p.push_back(packet->data[i]);
     }
 
+    csp_buffer_free(packet);
+
     // @TODO maybe make these std::vector<uint8_t> ???
     PPDU_u8 inputPayload(p);
     PPDU_u8 encodedPayload = CC27->encode(inputPayload);
@@ -192,14 +200,19 @@ TEST(CC27, Noisy_DecodeTest)
     std::vector<uint8_t> mPayload = encodedPayload.getPayload();
 
     // This is a repeatable test changing only one byte.
-    // mPayload[10] = 0xAA;
+    // mPayload[10] ^= (1 << 0);
 
-    // Change random bytes in the encoded payload for a more randomized test.
-    unsigned int number_of_errors = (unsigned int) testCSPPacketLength*ERROR_RATE;
+    // Generate a set of indexes to create bitflip errors at
+    unsigned int numberOfErrors = (unsigned int) mPayload.size()*BITFLIP_ERROR_RATE;
+    std::set<unsigned long> errorList;
+    while (errorList.size() < numberOfErrors) {
+      unsigned long errorIndex = rand() % mPayload.size();
+      errorList.insert(errorIndex);
+    }
 
-    for (unsigned long i = 0; i < number_of_errors; i++) {
-      int error_index = rand() % mPayload.size();
-      mPayload[error_index] = (uint8_t) rand() % 255;
+    // Apply the bitflip errors to the m(odified)Payload
+    for (auto elem : errorList) {
+      mPayload[elem] ^= BITFLIP_MASK;
     }
 
     std::vector<uint8_t> dPayload;
@@ -220,16 +233,15 @@ TEST(CC27, Noisy_DecodeTest)
       #endif
     }
 
-
-    ASSERT_TRUE(same) << "decoded payload does not match input payload";
-    ASSERT_TRUE(bitErrors == 0) << "Bit error count > 0";
+    EXPECT_EQ(same, true) << "decoded payload does not match input payload";
+    EXPECT_EQ(bitErrors, 0) << "Bit error count > 0";
   }
 }
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  // It seems like CSP may be crashing the tests randomly based on Meson help docs. This disables that feature.
-  setenv("MALLOC_PERTURB_", "0", 1);
-  return RUN_ALL_TESTS();
-}
+// int main(int argc, char **argv) {
+//   ::testing::InitGoogleTest(&argc, argv);
+//   // It seems like CSP may be crashing the tests randomly based on Meson help docs. This disables that feature.
+//   setenv("MALLOC_PERTURB_", "0", 1);
+//   return RUN_ALL_TESTS();
+// }
 
