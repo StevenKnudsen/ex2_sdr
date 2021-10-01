@@ -55,6 +55,38 @@ if not csp_dep.found()
     error('unable to find csp dependency')
 endif
 
+liquid_dep = dependency('liquid', required: false)
+
+if not liquid_dep.found()
+    foreach incdir: ['/usr/local/include/liquid']
+        if cpp.has_header('liquid.h', args: '-I' + incdir)
+            liquid_inc = include_directories(incdir)
+            break
+        endif
+    endforeach
+    
+    liquid_dep = declare_dependency(
+        dependencies: cpp.find_library('liquid'),
+        include_directories: liquid_inc,
+        )
+endif
+
+fec_dep = dependency('fec', required: false)
+
+if not fec_dep.found()
+    foreach incdir: ['/usr/local/include']
+        if cpp.has_header('fec.h', args: '-I' + incdir)
+            fec_inc = include_directories(incdir)
+            break
+        endif
+    endforeach
+    
+    fec_dep = declare_dependency(
+        dependencies: cpp.find_library('fec'),
+        include_directories: fec_inc,
+        )
+endif
+
 
 core_source_files = [
 #    PRJ_DIR / 'lib/app_layer/app.cpp',

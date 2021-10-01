@@ -56,3 +56,12 @@ unit_test_matrix2d = executable('unit_test-matrix2d', 'qa_matrix2d.cpp',
 test('matrix2d', unit_test_matrix2d,
     timeout: 30
     )
+
+unit_test_collinModem = executable('unit_test-collinModem', 'qa_collinModem.cpp', core_source_files,
+    include_directories : incdir,
+    dependencies: [gtest_dep, csp_dep, fec_dep, liquid_dep]
+    )
+
+test('collinModem', unit_test_collinModem,
+    timeout: 30
+    )
