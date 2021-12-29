@@ -134,7 +134,7 @@ blocks:
     bus_structure: null
     coordinate: [1152, 248.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: blocks_socket_pdu_0
   id: blocks_socket_pdu
   parameters:
@@ -152,7 +152,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1248, 396.0]
+    coordinate: [1304, 396.0]
     rotation: 0
     state: enabled
 - name: blocks_throttle_0
@@ -188,7 +188,7 @@ blocks:
     bus_structure: null
     coordinate: [968, 288.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: blocks_uchar_to_float_0_0_0
   id: blocks_uchar_to_float
   parameters:
@@ -202,6 +202,21 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [968, 328.0]
+    rotation: 0
+    state: enabled
+- name: blocks_uchar_to_float_0_0_1
+  id: blocks_uchar_to_float
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [880, 544.0]
     rotation: 0
     state: disabled
 - name: digital_binary_slicer_fb_0
@@ -249,6 +264,7 @@ blocks:
     alias: ''
     bt: '0.5'
     comment: ''
+    do_unpack: 'True'
     log: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -378,7 +394,7 @@ blocks:
     bus_structure: null
     coordinate: [728, 284.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: qtgui_time_sink_x_1
   id: qtgui_time_sink_x
   parameters:
@@ -475,6 +491,23 @@ blocks:
     bus_structure: null
     coordinate: [1288, 292.0]
     rotation: 0
+    state: enabled
+- name: satellites_ax25_deframer_0
+  id: satellites_ax25_deframer
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    g3ruh_scrambler: 'True'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    options: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1040, 540.0]
+    rotation: 0
     state: disabled
 - name: satellites_fsk_demodulator_0
   id: satellites_fsk_demodulator
@@ -507,7 +540,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1232, 504.0]
+    coordinate: [1296, 512.0]
     rotation: 0
     state: enabled
 - name: satellites_sync_to_pdu_packed_0_0
@@ -804,7 +837,7 @@ blocks:
     bus_structure: null
     coordinate: [736, 76.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: uhd_usrp_source_0_0
   id: uhd_usrp_source
   parameters:
@@ -1240,7 +1273,7 @@ blocks:
     bus_structure: null
     coordinate: [152, 436.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: virtual_sink_0
   id: virtual_sink
   parameters:
@@ -1253,7 +1286,7 @@ blocks:
     bus_structure: null
     coordinate: [736, 188.0]
     rotation: 0
-    state: true
+    state: disabled
 - name: virtual_source_0
   id: virtual_source
   parameters:
@@ -1266,7 +1299,7 @@ blocks:
     bus_structure: null
     coordinate: [232, 380.0]
     rotation: 0
-    state: true
+    state: disabled
 
 connections:
 - [blocks_delay_0, '0', qtgui_time_sink_x_1, '0']
@@ -1274,13 +1307,17 @@ connections:
 - [blocks_throttle_0, '0', digital_gfsk_mod_0, '0']
 - [blocks_uchar_to_float_0_0, '0', blocks_delay_0, '0']
 - [blocks_uchar_to_float_0_0_0, '0', qtgui_time_sink_x_1, '1']
+- [blocks_uchar_to_float_0_0_1, '0', satellites_ax25_deframer_0, '0']
 - [digital_binary_slicer_fb_0, '0', satellites_sync_to_pdu_packed_0_0, '0']
 - [digital_gfsk_demod_0, '0', blocks_uchar_to_float_0_0_0, '0']
+- [digital_gfsk_demod_0, '0', blocks_uchar_to_float_0_0_1, '0']
 - [digital_gfsk_demod_0, '0', satellites_sync_to_pdu_packed_0_0, '0']
 - [digital_gfsk_mod_0, '0', qtgui_time_sink_x_0, '0']
 - [digital_gfsk_mod_0, '0', uhd_usrp_sink_0, '0']
 - [digital_gfsk_mod_0, '0', virtual_sink_0, '0']
 - [network_tcp_source_0, '0', blocks_throttle_0, '0']
+- [satellites_ax25_deframer_0, out, blocks_socket_pdu_0, pdus]
+- [satellites_ax25_deframer_0, out, satellites_hexdump_sink_0, in]
 - [satellites_fsk_demodulator_0, '0', digital_binary_slicer_fb_0, '0']
 - [satellites_sync_to_pdu_packed_0_0, out, blocks_socket_pdu_0, pdus]
 - [satellites_sync_to_pdu_packed_0_0, out, satellites_hexdump_sink_0, in]
