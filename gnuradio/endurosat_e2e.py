@@ -24,6 +24,7 @@ from PyQt5 import Qt
 from gnuradio import qtgui
 from gnuradio.filter import firdes
 import sip
+from gnuradio import analog
 from gnuradio import blocks
 from gnuradio import digital
 from gnuradio import gr
@@ -33,7 +34,6 @@ import signal
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
-from gnuradio import network
 from gnuradio import uhd
 import time
 import satellites.components.datasinks
@@ -81,11 +81,11 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
         ##################################################
         self.fsk_dev = fsk_dev = 2400
         self.baud = baud = 9600
-        self.tx_gain = tx_gain = 40
+        self.tx_gain = tx_gain = 0.8
         self.spsym = spsym = 160
         self.sensitivity = sensitivity = 2*3.14159*(fsk_dev/baud)
-        self.rx_gain = rx_gain = 40
-        self.center_freq = center_freq = 436500000
+        self.rx_gain = rx_gain = 20
+        self.center_freq = center_freq = 435000000
 
         ##################################################
         # Blocks
@@ -102,39 +102,24 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
         # No synchronization enforced.
 
         self.uhd_usrp_source_0_0.set_center_freq(center_freq, 0)
-        self.uhd_usrp_source_0_0.set_antenna('RX2', 0)
+        self.uhd_usrp_source_0_0.set_antenna("TX/RX", 0)
         self.uhd_usrp_source_0_0.set_rx_agc(False, 0)
         self.uhd_usrp_source_0_0.set_gain(rx_gain, 0)
-        self.uhd_usrp_sink_0 = uhd.usrp_sink(
-            ",".join(("", "")),
-            uhd.stream_args(
-                cpu_format="fc32",
-                args='',
-                channels=list(range(0,1)),
-            ),
-            '',
-        )
-        self.uhd_usrp_sink_0.set_samp_rate(baud*spsym)
-        self.uhd_usrp_sink_0.set_time_unknown_pps(uhd.time_spec(0))
-
-        self.uhd_usrp_sink_0.set_center_freq(center_freq, 0)
-        self.uhd_usrp_sink_0.set_antenna('TX/RX', 0)
-        self.uhd_usrp_sink_0.set_gain(tx_gain, 0)
         self.satellites_sync_to_pdu_packed_0_0 = satellites.hier.sync_to_pdu_packed(
             packlen=23,
             sync='01111110',
             threshold=0,
         )
         self.satellites_hexdump_sink_0 = satellites.components.datasinks.hexdump_sink(options="")
-        self.qtgui_time_sink_x_1 = qtgui.time_sink_f(
-            2400, #size
-            baud, #samp_rate
+        self.qtgui_time_sink_x_1 = qtgui.time_sink_c(
+            256000*2, #size
+            256000, #samp_rate
             "", #name
-            2, #number of inputs
+            1, #number of inputs
             None # parent
         )
-        self.qtgui_time_sink_x_1.set_update_time(0.10)
-        self.qtgui_time_sink_x_1.set_y_axis(-0.1, 1.1)
+        self.qtgui_time_sink_x_1.set_update_time(2)
+        self.qtgui_time_sink_x_1.set_y_axis(1, -1)
 
         self.qtgui_time_sink_x_1.set_y_label('Amplitude', "")
 
@@ -163,7 +148,10 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
         for i in range(2):
             if len(labels[i]) == 0:
-                self.qtgui_time_sink_x_1.set_line_label(i, "Data {0}".format(i))
+                if (i % 2 == 0):
+                    self.qtgui_time_sink_x_1.set_line_label(i, "Re{{Data {0}}}".format(i/2))
+                else:
+                    self.qtgui_time_sink_x_1.set_line_label(i, "Im{{Data {0}}}".format(i/2))
             else:
                 self.qtgui_time_sink_x_1.set_line_label(i, labels[i])
             self.qtgui_time_sink_x_1.set_line_width(i, widths[i])
@@ -174,65 +162,6 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
         self._qtgui_time_sink_x_1_win = sip.wrapinstance(self.qtgui_time_sink_x_1.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_time_sink_x_1_win)
-        self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
-            int(baud*spsym), #size
-            baud*spsym, #samp_rate
-            "", #name
-            2, #number of inputs
-            None # parent
-        )
-        self.qtgui_time_sink_x_0.set_update_time(0.10)
-        self.qtgui_time_sink_x_0.set_y_axis(-0.1, 0.1)
-
-        self.qtgui_time_sink_x_0.set_y_label('Amplitude', "")
-
-        self.qtgui_time_sink_x_0.enable_tags(True)
-        self.qtgui_time_sink_x_0.set_trigger_mode(qtgui.TRIG_MODE_FREE, qtgui.TRIG_SLOPE_POS, 0.0, 0, 0, "")
-        self.qtgui_time_sink_x_0.enable_autoscale(True)
-        self.qtgui_time_sink_x_0.enable_grid(False)
-        self.qtgui_time_sink_x_0.enable_axis_labels(True)
-        self.qtgui_time_sink_x_0.enable_control_panel(False)
-        self.qtgui_time_sink_x_0.enable_stem_plot(False)
-
-
-        labels = ['Signal 1', 'Signal 2', 'Signal 3', 'Signal 4', 'Signal 5',
-            'Signal 6', 'Signal 7', 'Signal 8', 'Signal 9', 'Signal 10']
-        widths = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        colors = ['blue', 'red', 'green', 'black', 'cyan',
-            'magenta', 'yellow', 'dark red', 'dark green', 'dark blue']
-        alphas = [1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0, 1.0, 1.0]
-        styles = [1, 1, 1, 1, 1,
-            1, 1, 1, 1, 1]
-        markers = [-1, -1, -1, -1, -1,
-            -1, -1, -1, -1, -1]
-
-
-        for i in range(4):
-            if len(labels[i]) == 0:
-                if (i % 2 == 0):
-                    self.qtgui_time_sink_x_0.set_line_label(i, "Re{{Data {0}}}".format(i/2))
-                else:
-                    self.qtgui_time_sink_x_0.set_line_label(i, "Im{{Data {0}}}".format(i/2))
-            else:
-                self.qtgui_time_sink_x_0.set_line_label(i, labels[i])
-            self.qtgui_time_sink_x_0.set_line_width(i, widths[i])
-            self.qtgui_time_sink_x_0.set_line_color(i, colors[i])
-            self.qtgui_time_sink_x_0.set_line_style(i, styles[i])
-            self.qtgui_time_sink_x_0.set_line_marker(i, markers[i])
-            self.qtgui_time_sink_x_0.set_line_alpha(i, alphas[i])
-
-        self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
-        self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
-        self.network_tcp_source_0 = network.tcp_source.tcp_source(itemsize=gr.sizeof_char*1,addr='127.0.0.1',port=1234,server=True)
-        self.digital_gfsk_mod_0 = digital.gfsk_mod(
-            samples_per_symbol=spsym,
-            sensitivity=sensitivity,
-            bt=0.5,
-            verbose=False,
-            log=False,
-            do_unpack=True)
         self.digital_gfsk_demod_0 = digital.gfsk_demod(
             samples_per_symbol=spsym,
             sensitivity=sensitivity,
@@ -242,11 +171,8 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
             freq_error=0.0,
             verbose=False,
             log=False)
-        self.blocks_uchar_to_float_0_0_0 = blocks.uchar_to_float()
-        self.blocks_uchar_to_float_0_0 = blocks.uchar_to_float()
-        self.blocks_throttle_0 = blocks.throttle(gr.sizeof_char*1, baud,True)
         self.blocks_socket_pdu_0 = blocks.socket_pdu('TCP_CLIENT', '127.0.0.1', '4321', 10000, False)
-        self.blocks_delay_0 = blocks.delay(gr.sizeof_float*1, 0)
+        self.analog_simple_squelch_cc_0 = analog.simple_squelch_cc(-50, 1)
 
 
 
@@ -255,18 +181,10 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
         ##################################################
         self.msg_connect((self.satellites_sync_to_pdu_packed_0_0, 'out'), (self.blocks_socket_pdu_0, 'pdus'))
         self.msg_connect((self.satellites_sync_to_pdu_packed_0_0, 'out'), (self.satellites_hexdump_sink_0, 'in'))
-        self.connect((self.blocks_delay_0, 0), (self.qtgui_time_sink_x_1, 0))
-        self.connect((self.blocks_throttle_0, 0), (self.blocks_uchar_to_float_0_0, 0))
-        self.connect((self.blocks_throttle_0, 0), (self.digital_gfsk_mod_0, 0))
-        self.connect((self.blocks_uchar_to_float_0_0, 0), (self.blocks_delay_0, 0))
-        self.connect((self.blocks_uchar_to_float_0_0_0, 0), (self.qtgui_time_sink_x_1, 1))
-        self.connect((self.digital_gfsk_demod_0, 0), (self.blocks_uchar_to_float_0_0_0, 0))
+        self.connect((self.analog_simple_squelch_cc_0, 0), (self.digital_gfsk_demod_0, 0))
         self.connect((self.digital_gfsk_demod_0, 0), (self.satellites_sync_to_pdu_packed_0_0, 0))
-        self.connect((self.digital_gfsk_mod_0, 0), (self.qtgui_time_sink_x_0, 0))
-        self.connect((self.digital_gfsk_mod_0, 0), (self.uhd_usrp_sink_0, 0))
-        self.connect((self.network_tcp_source_0, 0), (self.blocks_throttle_0, 0))
-        self.connect((self.uhd_usrp_source_0_0, 0), (self.digital_gfsk_demod_0, 0))
-        self.connect((self.uhd_usrp_source_0_0, 0), (self.qtgui_time_sink_x_0, 1))
+        self.connect((self.uhd_usrp_source_0_0, 0), (self.analog_simple_squelch_cc_0, 0))
+        self.connect((self.uhd_usrp_source_0_0, 0), (self.qtgui_time_sink_x_1, 0))
 
 
     def closeEvent(self, event):
@@ -290,10 +208,6 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
     def set_baud(self, baud):
         self.baud = baud
         self.set_sensitivity(2*3.14159*(self.fsk_dev/self.baud))
-        self.blocks_throttle_0.set_sample_rate(self.baud)
-        self.qtgui_time_sink_x_0.set_samp_rate(self.baud*self.spsym)
-        self.qtgui_time_sink_x_1.set_samp_rate(self.baud)
-        self.uhd_usrp_sink_0.set_samp_rate(self.baud*self.spsym)
         self.uhd_usrp_source_0_0.set_samp_rate(self.baud*self.spsym)
 
     def get_tx_gain(self):
@@ -301,15 +215,12 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
     def set_tx_gain(self, tx_gain):
         self.tx_gain = tx_gain
-        self.uhd_usrp_sink_0.set_gain(self.tx_gain, 0)
 
     def get_spsym(self):
         return self.spsym
 
     def set_spsym(self, spsym):
         self.spsym = spsym
-        self.qtgui_time_sink_x_0.set_samp_rate(self.baud*self.spsym)
-        self.uhd_usrp_sink_0.set_samp_rate(self.baud*self.spsym)
         self.uhd_usrp_source_0_0.set_samp_rate(self.baud*self.spsym)
 
     def get_sensitivity(self):
@@ -330,7 +241,6 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
     def set_center_freq(self, center_freq):
         self.center_freq = center_freq
-        self.uhd_usrp_sink_0.set_center_freq(self.center_freq, 0)
         self.uhd_usrp_source_0_0.set_center_freq(self.center_freq, 0)
 
 
