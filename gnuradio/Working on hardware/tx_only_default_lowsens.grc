@@ -32,11 +32,35 @@ options:
     state: enabled
 
 blocks:
-- name: baud
+- name: BW
+  id: variable
+  parameters:
+    comment: ''
+    value: 2*fsk_dev+baud_bit
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1056, 140.0]
+    rotation: 0
+    state: enabled
+- name: baud_bit
   id: variable
   parameters:
     comment: ''
     value: '9600'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [248, 12.0]
+    rotation: 0
+    state: enabled
+- name: baud_byte
+  id: variable
+  parameters:
+    comment: ''
+    value: baud_bit/8
   states:
     bus_sink: false
     bus_source: false
@@ -68,6 +92,18 @@ blocks:
     coordinate: [432, 12.0]
     rotation: 0
     state: enabled
+- name: old_BW
+  id: variable
+  parameters:
+    comment: ''
+    value: baud_bit*spsym
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1184, 116.0]
+    rotation: 0
+    state: enabled
 - name: rx_gain
   id: variable
   parameters:
@@ -84,7 +120,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: 2*3.14159*(fsk_dev/baud)
+    value: 2*3.14159*(fsk_dev/baud_bit)
   states:
     bus_sink: false
     bus_source: false
@@ -96,7 +132,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '160'
+    value: '2'
   states:
     bus_sink: false
     bus_source: false
@@ -108,7 +144,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '0.8'
+    value: '1'
   states:
     bus_sink: false
     bus_source: false
@@ -116,24 +152,43 @@ blocks:
     coordinate: [944, 12.0]
     rotation: 0
     state: enabled
-- name: analog_simple_squelch_cc_0
-  id: analog_simple_squelch_cc
+- name: blocks_delay_0
+  id: blocks_delay
   parameters:
     affinity: ''
     alias: ''
-    alpha: '1'
     comment: ''
+    delay: '0'
     maxoutbuf: '0'
     minoutbuf: '0'
-    threshold: '-50'
+    num_ports: '1'
+    type: float
+    vlen: '1'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [416, 468.0]
+    coordinate: [1152, 248.0]
+    rotation: 0
+    state: disabled
+- name: blocks_pdu_to_tagged_stream_0
+  id: blocks_pdu_to_tagged_stream
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    tag: packet_len
+    type: byte
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [80, 380.0]
     rotation: 0
     state: true
-- name: blocks_socket_pdu_0
+- name: blocks_socket_pdu_1
   id: blocks_socket_pdu
   parameters:
     affinity: ''
@@ -143,17 +198,17 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: '0'
     mtu: '10000'
-    port: '4321'
+    port: '1234'
     tcp_no_delay: 'False'
-    type: TCP_CLIENT
+    type: TCP_SERVER
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1304, 396.0]
+    coordinate: [56, 492.0]
     rotation: 0
-    state: enabled
-- name: blocks_uchar_to_float_0_0_1
+    state: true
+- name: blocks_uchar_to_float_0_0
   id: blocks_uchar_to_float
   parameters:
     affinity: ''
@@ -165,22 +220,39 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [880, 544.0]
+    coordinate: [968, 288.0]
     rotation: 0
     state: disabled
-- name: digital_gfsk_demod_0
-  id: digital_gfsk_demod
+- name: blocks_unpacked_to_packed_xx_0
+  id: blocks_unpacked_to_packed_xx
   parameters:
     affinity: ''
     alias: ''
+    bits_per_chunk: '8'
     comment: ''
-    freq_error: '0.0'
-    gain_mu: '0.175'
+    endianness: gr.GR_MSB_FIRST
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    num_ports: '1'
+    type: byte
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [184, 252.0]
+    rotation: 0
+    state: true
+- name: digital_gfsk_mod_0
+  id: digital_gfsk_mod
+  parameters:
+    affinity: ''
+    alias: ''
+    bt: '0.5'
+    comment: ''
+    do_unpack: 'True'
     log: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
-    mu: '0.5'
-    omega_relative_limit: '0.005'
     samples_per_symbol: spsym
     sensitivity: sensitivity
     verbose: 'False'
@@ -188,7 +260,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [632, 436.0]
+    coordinate: [440, 124.0]
     rotation: 0
     state: enabled
 - name: note_0
@@ -196,14 +268,111 @@ blocks:
   parameters:
     alias: ''
     comment: ''
-    note: Unpacked
+    note: GFSK Mod input is packed bytes (eg. 0b01110000)
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [800, 420.0]
+    coordinate: [416, 212.0]
     rotation: 0
     state: true
+- name: qtgui_time_sink_x_0
+  id: qtgui_time_sink_x
+  parameters:
+    affinity: ''
+    alias: ''
+    alpha1: '1.0'
+    alpha10: '1.0'
+    alpha2: '1.0'
+    alpha3: '1.0'
+    alpha4: '1.0'
+    alpha5: '1.0'
+    alpha6: '1.0'
+    alpha7: '1.0'
+    alpha8: '1.0'
+    alpha9: '1.0'
+    autoscale: 'True'
+    axislabels: 'True'
+    color1: blue
+    color10: dark blue
+    color2: red
+    color3: green
+    color4: black
+    color5: cyan
+    color6: magenta
+    color7: yellow
+    color8: dark red
+    color9: dark green
+    comment: ''
+    ctrlpanel: 'False'
+    entags: 'True'
+    grid: 'False'
+    gui_hint: ''
+    label1: Signal 1
+    label10: Signal 10
+    label2: Signal 2
+    label3: Signal 3
+    label4: Signal 4
+    label5: Signal 5
+    label6: Signal 6
+    label7: Signal 7
+    label8: Signal 8
+    label9: Signal 9
+    legend: 'True'
+    marker1: '-1'
+    marker10: '-1'
+    marker2: '-1'
+    marker3: '-1'
+    marker4: '-1'
+    marker5: '-1'
+    marker6: '-1'
+    marker7: '-1'
+    marker8: '-1'
+    marker9: '-1'
+    name: '""'
+    nconnections: '1'
+    size: 9600*160
+    srate: 9600*160
+    stemplot: 'False'
+    style1: '1'
+    style10: '1'
+    style2: '1'
+    style3: '1'
+    style4: '1'
+    style5: '1'
+    style6: '1'
+    style7: '1'
+    style8: '1'
+    style9: '1'
+    tr_chan: '0'
+    tr_delay: '0'
+    tr_level: '0.0'
+    tr_mode: qtgui.TRIG_MODE_FREE
+    tr_slope: qtgui.TRIG_SLOPE_POS
+    tr_tag: '""'
+    type: complex
+    update_time: '1'
+    width1: '1'
+    width10: '1'
+    width2: '1'
+    width3: '1'
+    width4: '1'
+    width5: '1'
+    width6: '1'
+    width7: '1'
+    width8: '1'
+    width9: '1'
+    ylabel: Amplitude
+    ymax: '0.1'
+    ymin: '-0.1'
+    yunit: '""'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [744, 348.0]
+    rotation: 0
+    state: enabled
 - name: qtgui_time_sink_x_1
   id: qtgui_time_sink_x
   parameters:
@@ -300,93 +469,44 @@ blocks:
     bus_structure: null
     coordinate: [1288, 292.0]
     rotation: 0
-    state: enabled
-- name: satellites_ax25_deframer_0
-  id: satellites_ax25_deframer
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    g3ruh_scrambler: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    options: '""'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1040, 540.0]
-    rotation: 0
     state: disabled
-- name: satellites_hexdump_sink_0
-  id: satellites_hexdump_sink
+- name: uhd_usrp_sink_0
+  id: uhd_usrp_sink
   parameters:
     affinity: ''
     alias: ''
-    comment: ''
-    options: '""'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1296, 512.0]
-    rotation: 0
-    state: enabled
-- name: satellites_sync_to_pdu_packed_0_0
-  id: satellites_sync_to_pdu_packed
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    packlen: '128'
-    sync: '''01111110'''
-    threshold: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [944, 460.0]
-    rotation: 0
-    state: enabled
-- name: uhd_usrp_source_0_0
-  id: uhd_usrp_source
-  parameters:
-    affinity: ''
-    alias: ''
-    ant0: '"TX/RX"'
-    ant1: RX2
-    ant10: RX2
-    ant11: RX2
-    ant12: RX2
-    ant13: RX2
-    ant14: RX2
-    ant15: RX2
-    ant16: RX2
-    ant17: RX2
-    ant18: RX2
-    ant19: RX2
-    ant2: RX2
-    ant20: RX2
-    ant21: RX2
-    ant22: RX2
-    ant23: RX2
-    ant24: RX2
-    ant25: RX2
-    ant26: RX2
-    ant27: RX2
-    ant28: RX2
-    ant29: RX2
-    ant3: RX2
-    ant30: RX2
-    ant31: RX2
-    ant4: RX2
-    ant5: RX2
-    ant6: RX2
-    ant7: RX2
-    ant8: RX2
-    ant9: RX2
+    ant0: TX/RX
+    ant1: TX/RX
+    ant10: TX/RX
+    ant11: TX/RX
+    ant12: TX/RX
+    ant13: TX/RX
+    ant14: TX/RX
+    ant15: TX/RX
+    ant16: TX/RX
+    ant17: TX/RX
+    ant18: TX/RX
+    ant19: TX/RX
+    ant2: TX/RX
+    ant20: TX/RX
+    ant21: TX/RX
+    ant22: TX/RX
+    ant23: TX/RX
+    ant24: TX/RX
+    ant25: TX/RX
+    ant26: TX/RX
+    ant27: TX/RX
+    ant28: TX/RX
+    ant29: TX/RX
+    ant3: TX/RX
+    ant30: TX/RX
+    ant31: TX/RX
+    ant4: TX/RX
+    ant5: TX/RX
+    ant6: TX/RX
+    ant7: TX/RX
+    ant8: TX/RX
+    ant9: TX/RX
     bw0: '0'
     bw1: '0'
     bw10: '0'
@@ -461,73 +581,9 @@ blocks:
     clock_source6: ''
     clock_source7: ''
     comment: ''
-    dc_offs0: 0+0j
-    dc_offs1: 0+0j
-    dc_offs10: 0+0j
-    dc_offs11: 0+0j
-    dc_offs12: 0+0j
-    dc_offs13: 0+0j
-    dc_offs14: 0+0j
-    dc_offs15: 0+0j
-    dc_offs16: 0+0j
-    dc_offs17: 0+0j
-    dc_offs18: 0+0j
-    dc_offs19: 0+0j
-    dc_offs2: 0+0j
-    dc_offs20: 0+0j
-    dc_offs21: 0+0j
-    dc_offs22: 0+0j
-    dc_offs23: 0+0j
-    dc_offs24: 0+0j
-    dc_offs25: 0+0j
-    dc_offs26: 0+0j
-    dc_offs27: 0+0j
-    dc_offs28: 0+0j
-    dc_offs29: 0+0j
-    dc_offs3: 0+0j
-    dc_offs30: 0+0j
-    dc_offs31: 0+0j
-    dc_offs4: 0+0j
-    dc_offs5: 0+0j
-    dc_offs6: 0+0j
-    dc_offs7: 0+0j
-    dc_offs8: 0+0j
-    dc_offs9: 0+0j
-    dc_offs_enb0: default
-    dc_offs_enb1: default
-    dc_offs_enb10: default
-    dc_offs_enb11: default
-    dc_offs_enb12: default
-    dc_offs_enb13: default
-    dc_offs_enb14: default
-    dc_offs_enb15: default
-    dc_offs_enb16: default
-    dc_offs_enb17: default
-    dc_offs_enb18: default
-    dc_offs_enb19: default
-    dc_offs_enb2: default
-    dc_offs_enb20: default
-    dc_offs_enb21: default
-    dc_offs_enb22: default
-    dc_offs_enb23: default
-    dc_offs_enb24: default
-    dc_offs_enb25: default
-    dc_offs_enb26: default
-    dc_offs_enb27: default
-    dc_offs_enb28: default
-    dc_offs_enb29: default
-    dc_offs_enb3: default
-    dc_offs_enb30: default
-    dc_offs_enb31: default
-    dc_offs_enb4: default
-    dc_offs_enb5: default
-    dc_offs_enb6: default
-    dc_offs_enb7: default
-    dc_offs_enb8: default
-    dc_offs_enb9: default
     dev_addr: '""'
     dev_args: '""'
-    gain0: rx_gain
+    gain0: tx_gain
     gain1: '0'
     gain10: '0'
     gain11: '0'
@@ -559,7 +615,7 @@ blocks:
     gain7: '0'
     gain8: '0'
     gain9: '0'
-    gain_type0: default
+    gain_type0: normalized
     gain_type1: default
     gain_type10: default
     gain_type11: default
@@ -591,70 +647,7 @@ blocks:
     gain_type7: default
     gain_type8: default
     gain_type9: default
-    iq_imbal0: 0+0j
-    iq_imbal1: 0+0j
-    iq_imbal10: 0+0j
-    iq_imbal11: 0+0j
-    iq_imbal12: 0+0j
-    iq_imbal13: 0+0j
-    iq_imbal14: 0+0j
-    iq_imbal15: 0+0j
-    iq_imbal16: 0+0j
-    iq_imbal17: 0+0j
-    iq_imbal18: 0+0j
-    iq_imbal19: 0+0j
-    iq_imbal2: 0+0j
-    iq_imbal20: 0+0j
-    iq_imbal21: 0+0j
-    iq_imbal22: 0+0j
-    iq_imbal23: 0+0j
-    iq_imbal24: 0+0j
-    iq_imbal25: 0+0j
-    iq_imbal26: 0+0j
-    iq_imbal27: 0+0j
-    iq_imbal28: 0+0j
-    iq_imbal29: 0+0j
-    iq_imbal3: 0+0j
-    iq_imbal30: 0+0j
-    iq_imbal31: 0+0j
-    iq_imbal4: 0+0j
-    iq_imbal5: 0+0j
-    iq_imbal6: 0+0j
-    iq_imbal7: 0+0j
-    iq_imbal8: 0+0j
-    iq_imbal9: 0+0j
-    iq_imbal_enb0: default
-    iq_imbal_enb1: default
-    iq_imbal_enb10: default
-    iq_imbal_enb11: default
-    iq_imbal_enb12: default
-    iq_imbal_enb13: default
-    iq_imbal_enb14: default
-    iq_imbal_enb15: default
-    iq_imbal_enb16: default
-    iq_imbal_enb17: default
-    iq_imbal_enb18: default
-    iq_imbal_enb19: default
-    iq_imbal_enb2: default
-    iq_imbal_enb20: default
-    iq_imbal_enb21: default
-    iq_imbal_enb22: default
-    iq_imbal_enb23: default
-    iq_imbal_enb24: default
-    iq_imbal_enb25: default
-    iq_imbal_enb26: default
-    iq_imbal_enb27: default
-    iq_imbal_enb28: default
-    iq_imbal_enb29: default
-    iq_imbal_enb3: default
-    iq_imbal_enb30: default
-    iq_imbal_enb31: default
-    iq_imbal_enb4: default
-    iq_imbal_enb5: default
-    iq_imbal_enb6: default
-    iq_imbal_enb7: default
-    iq_imbal_enb8: default
-    iq_imbal_enb9: default
+    len_tag_name: ''
     lo_export0: 'False'
     lo_export1: 'False'
     lo_export10: 'False'
@@ -724,39 +717,7 @@ blocks:
     nchan: '1'
     num_mboards: '1'
     otw: ''
-    rx_agc0: Disabled
-    rx_agc1: Default
-    rx_agc10: Default
-    rx_agc11: Default
-    rx_agc12: Default
-    rx_agc13: Default
-    rx_agc14: Default
-    rx_agc15: Default
-    rx_agc16: Default
-    rx_agc17: Default
-    rx_agc18: Default
-    rx_agc19: Default
-    rx_agc2: Default
-    rx_agc20: Default
-    rx_agc21: Default
-    rx_agc22: Default
-    rx_agc23: Default
-    rx_agc24: Default
-    rx_agc25: Default
-    rx_agc26: Default
-    rx_agc27: Default
-    rx_agc28: Default
-    rx_agc29: Default
-    rx_agc3: Default
-    rx_agc30: Default
-    rx_agc31: Default
-    rx_agc4: Default
-    rx_agc5: Default
-    rx_agc6: Default
-    rx_agc7: Default
-    rx_agc8: Default
-    rx_agc9: Default
-    samp_rate: baud*spsym
+    samp_rate: spsym*baud_bit
     sd_spec0: ''
     sd_spec1: ''
     sd_spec2: ''
@@ -769,7 +730,7 @@ blocks:
     start_time: '-1.0'
     stream_args: ''
     stream_chans: '[]'
-    sync: none
+    sync: pc_clock_next_pps
     time_source0: ''
     time_source1: ''
     time_source2: ''
@@ -783,21 +744,18 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [152, 436.0]
+    coordinate: [720, 84.0]
     rotation: 0
     state: enabled
 
 connections:
-- [analog_simple_squelch_cc_0, '0', digital_gfsk_demod_0, '0']
-- [blocks_uchar_to_float_0_0_1, '0', satellites_ax25_deframer_0, '0']
-- [digital_gfsk_demod_0, '0', blocks_uchar_to_float_0_0_1, '0']
-- [digital_gfsk_demod_0, '0', satellites_sync_to_pdu_packed_0_0, '0']
-- [satellites_ax25_deframer_0, out, blocks_socket_pdu_0, pdus]
-- [satellites_ax25_deframer_0, out, satellites_hexdump_sink_0, in]
-- [satellites_sync_to_pdu_packed_0_0, out, blocks_socket_pdu_0, pdus]
-- [satellites_sync_to_pdu_packed_0_0, out, satellites_hexdump_sink_0, in]
-- [uhd_usrp_source_0_0, '0', analog_simple_squelch_cc_0, '0']
-- [uhd_usrp_source_0_0, '0', qtgui_time_sink_x_1, '0']
+- [blocks_delay_0, '0', qtgui_time_sink_x_1, '0']
+- [blocks_pdu_to_tagged_stream_0, '0', blocks_unpacked_to_packed_xx_0, '0']
+- [blocks_socket_pdu_1, pdus, blocks_pdu_to_tagged_stream_0, pdus]
+- [blocks_uchar_to_float_0_0, '0', blocks_delay_0, '0']
+- [blocks_unpacked_to_packed_xx_0, '0', digital_gfsk_mod_0, '0']
+- [digital_gfsk_mod_0, '0', qtgui_time_sink_x_0, '0']
+- [digital_gfsk_mod_0, '0', uhd_usrp_sink_0, '0']
 
 metadata:
   file_format: 1
