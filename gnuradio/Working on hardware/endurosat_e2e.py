@@ -26,7 +26,6 @@ from gnuradio.filter import firdes
 import sip
 from gnuradio import blocks
 from gnuradio import digital
-from gnuradio import filter
 from gnuradio import gr
 from gnuradio.fft import window
 import sys
@@ -77,16 +76,14 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
         ##################################################
         # Variables
         ##################################################
-        self.spsym = spsym = 2
-        self.fsk_dev = fsk_dev = 2400
-        self.baud_bit = baud_bit = 9600
+        self.spsym = spsym = 100
+        self.fsk_dev = fsk_dev = 4800
+        self.baud_bit = baud_bit = 19200
         self.tx_gain = tx_gain = 1
-        self.sensitivity = sensitivity = 2*3.14159*(fsk_dev/baud_bit*spsym)
+        self.sensitivity = sensitivity = 2*3.14159*(fsk_dev/(baud_bit*spsym))
         self.rx_gain = rx_gain = 20
-        self.old_BW = old_BW = baud_bit*spsym
-        self.center_freq = center_freq = 435000000
+        self.center_freq = center_freq = 437875000
         self.baud_byte = baud_byte = baud_bit/8
-        self.BW = BW = 2*fsk_dev+baud_bit
 
         ##################################################
         # Blocks
@@ -105,15 +102,10 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
         self.uhd_usrp_sink_0.set_center_freq(center_freq, 0)
         self.uhd_usrp_sink_0.set_antenna('TX/RX', 0)
-        self.uhd_usrp_sink_0.set_normalized_gain(tx_gain, 0)
-        self.rational_resampler_xxx_0 = filter.rational_resampler_ccc(
-                interpolation=baud_bit*spsym,
-                decimation=baud_bit,
-                taps=[],
-                fractional_bw=0)
+        self.uhd_usrp_sink_0.set_gain(tx_gain, 0)
         self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
-            9600*spsym, #size
-            9600*spsym, #samp_rate
+            spsym*50, #size
+            spsym*50, #samp_rate
             "", #name
             1, #number of inputs
             None # parent
@@ -163,7 +155,7 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
         self._qtgui_time_sink_x_0_win = sip.wrapinstance(self.qtgui_time_sink_x_0.qwidget(), Qt.QWidget)
         self.top_layout.addWidget(self._qtgui_time_sink_x_0_win)
         self.qtgui_freq_sink_x_0 = qtgui.freq_sink_c(
-            1024, #size
+            10*1024, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
             center_freq, #fc
             2*baud_bit*spsym, #bw
@@ -225,8 +217,7 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
         self.connect((self.blocks_unpacked_to_packed_xx_0, 0), (self.digital_gfsk_mod_0, 0))
         self.connect((self.digital_gfsk_mod_0, 0), (self.qtgui_freq_sink_x_0, 0))
         self.connect((self.digital_gfsk_mod_0, 0), (self.qtgui_time_sink_x_0, 0))
-        self.connect((self.digital_gfsk_mod_0, 0), (self.rational_resampler_xxx_0, 0))
-        self.connect((self.rational_resampler_xxx_0, 0), (self.uhd_usrp_sink_0, 0))
+        self.connect((self.digital_gfsk_mod_0, 0), (self.uhd_usrp_sink_0, 0))
 
 
     def closeEvent(self, event):
@@ -242,10 +233,9 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
     def set_spsym(self, spsym):
         self.spsym = spsym
-        self.set_old_BW(self.baud_bit*self.spsym)
-        self.set_sensitivity(2*3.14159*(self.fsk_dev/self.baud_bit*self.spsym))
+        self.set_sensitivity(2*3.14159*(self.fsk_dev/(self.baud_bit*self.spsym)))
         self.qtgui_freq_sink_x_0.set_frequency_range(self.center_freq, 2*self.baud_bit*self.spsym)
-        self.qtgui_time_sink_x_0.set_samp_rate(9600*self.spsym)
+        self.qtgui_time_sink_x_0.set_samp_rate(self.spsym*50)
         self.uhd_usrp_sink_0.set_samp_rate(self.baud_bit*self.spsym)
 
     def get_fsk_dev(self):
@@ -253,18 +243,15 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
     def set_fsk_dev(self, fsk_dev):
         self.fsk_dev = fsk_dev
-        self.set_BW(2*self.fsk_dev+self.baud_bit)
-        self.set_sensitivity(2*3.14159*(self.fsk_dev/self.baud_bit*self.spsym))
+        self.set_sensitivity(2*3.14159*(self.fsk_dev/(self.baud_bit*self.spsym)))
 
     def get_baud_bit(self):
         return self.baud_bit
 
     def set_baud_bit(self, baud_bit):
         self.baud_bit = baud_bit
-        self.set_BW(2*self.fsk_dev+self.baud_bit)
         self.set_baud_byte(self.baud_bit/8)
-        self.set_old_BW(self.baud_bit*self.spsym)
-        self.set_sensitivity(2*3.14159*(self.fsk_dev/self.baud_bit*self.spsym))
+        self.set_sensitivity(2*3.14159*(self.fsk_dev/(self.baud_bit*self.spsym)))
         self.qtgui_freq_sink_x_0.set_frequency_range(self.center_freq, 2*self.baud_bit*self.spsym)
         self.uhd_usrp_sink_0.set_samp_rate(self.baud_bit*self.spsym)
 
@@ -273,7 +260,7 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
     def set_tx_gain(self, tx_gain):
         self.tx_gain = tx_gain
-        self.uhd_usrp_sink_0.set_normalized_gain(self.tx_gain, 0)
+        self.uhd_usrp_sink_0.set_gain(self.tx_gain, 0)
 
     def get_sensitivity(self):
         return self.sensitivity
@@ -286,12 +273,6 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
     def set_rx_gain(self, rx_gain):
         self.rx_gain = rx_gain
-
-    def get_old_BW(self):
-        return self.old_BW
-
-    def set_old_BW(self, old_BW):
-        self.old_BW = old_BW
 
     def get_center_freq(self):
         return self.center_freq
@@ -306,12 +287,6 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
 
     def set_baud_byte(self, baud_byte):
         self.baud_byte = baud_byte
-
-    def get_BW(self):
-        return self.BW
-
-    def set_BW(self, BW):
-        self.BW = BW
 
 
 
