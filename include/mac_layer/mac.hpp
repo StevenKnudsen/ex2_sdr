@@ -17,6 +17,8 @@
 #ifndef EX2_SDR_MAC_LAYER_MAC_H_
 #define EX2_SDR_MAC_LAYER_MAC_H_
 
+#include <mutex>
+#include <stdexcept>
 #include <vector>
 #include <time.h>
 
@@ -26,48 +28,46 @@ extern "C" {
 
 #include "csp_types.h"
 
-#include "FreeRTOS.h"
-#include "FreeRTOSConfig.h"
-
-#include "queue.h"
-
 #ifdef __cplusplus
 }
 #endif
 
+#include "FEC.hpp"
 #include "ppdu_cf.hpp"
 #include "ppdu_u8.hpp"
-//#include "configuration.h"
 #include "mpdu.hpp"
 #include "rfMode.hpp"
 
-// For FreeRTOS queues
-#define QUEUE_LENGTH ( 5 )
+// TODO This definition belongs somewhere else
+#define CSP_MTU_LENGTH ( 4096 )
 
-/* Priorities at which the tasks are created. */
-#define mainQUEUE_RECEIVE_TASK_PRIORITY   ( tskIDLE_PRIORITY + 2 )
-#define mainQUEUE_SEND_TASK_PRIORITY      ( tskIDLE_PRIORITY + 1 )
+#define MAC_MAX_RX_BUFFERS MAC_SERVICE_QUEUE_LENGTH
+#define MAC_MAX_TX_BUFFERS MAC_SERVICE_QUEUE_LENGTH
+
 
 namespace ex2
 {
   namespace sdr
   {
+// @todo really can't have exceptions since it's hard to deal with them in C
+//
+//    class MACException: public std::runtime_error {
+//
+//    public:
+//      MACException(const std::string& message);
+//    };
+//
     /*!
-     * @brief This is the Darkstar media access controller (MAC)
-     * @ingroup darkstar
+     * @brief This is the media access controller (MAC)
      *
-     * @details The MAC class interfaces with the App layer to process and
-     * forward received APDUs to the PHY layer as MPDUs. It interfaces with the
-     * PHY layer to process received MPDUs and forward the resulting APDUs to
-     * the App layer.
+     * @details The MAC class is a singleton that instantiates two tasks that
+     * manage queues to the CSP server. One queue transports CSP packets from
+     * the CSP server to the MAC that are to be transmitted by the UHF radio.
+     * The other queue is used by the MAC to send CSP packets up to the CSP
+     * server that are reconstructed from packets received by the UHF Radio.
      *
-     * The MAC comprises two components:
-     * @li mac_high - an interface layer that handles Application Layer PDUs
-     * @li mac_low - an interface layer that handles PHY Layer PDUs
-     * The MAC configures and connects these components, sets up and presents
-     * the message interfaces.
      *
-     * @todo Add stack diagram?
+     * @todo Add diagrams (state machine, messaging, other)?
      */
     class MAC
     {
@@ -93,96 +93,173 @@ namespace ex2
 
       ~MAC ();
 
-      /************************************************************************
-       * Functions to handle Application Protocol Data Units
-       ***********************************************************************/
+      // @TODO keep this old code for use in the wrapper
+//      /*!
+//       * @brief The task that receives CSP packets via a queue from the CSP
+//       * server.
+//       *
+//       * @details The task monitors the queue and when a CSP packet arrives, it
+//       * processes it into Transparent Mode packets that are sent in sequence
+//       * to the UHF Radio via the UART interface.
+//       *
+//       * @param taskParameters Just a placeholder
+//       */
+//       static void queueSendToUHFTask( void *taskParameters );
+//
+//      /*!
+//       * @brief The task that send CSP packets via a queue to the CSP server.
+//       *
+//       * @details The task monitors the UART interface from the UHF Radio for
+//       * Transparent Mode packets. It processes those received and reconstructs
+//       * the source CSP packet. When a CSP packet is complete, it is sent via a
+//       * queue to the CSP server.
+//       *
+//       * @param taskParameters Just a placeholder
+//       */
+//       static void queueReceiveFromUHFTask( void *taskParameters );
+//
+//      /*!
+//       * @brief Accessor
+//       *
+//       * @return The Send queue handle
+//       */
+//      QueueHandle_t
+//      getSendQueueHandle () const
+//      {
+//        return xSendToUHFQueue;
+//      }
+//
+//      /*!
+//       * @brief Accessor
+//       *
+//       * @return The Receive queue handle
+//       */
+//      QueueHandle_t
+//      getRecvQueueHandle () const
+//      {
+//        return xRecvFromUHFQueue;
+//      }
 
       /*!
-       * @brief Provide a function to send APDUs.
+       * @brief Process the received UHF data as an MPDU.
        *
-       * @details It's assumed that an upper layer (Application) submits APDUs
-       * to the MAC via @p sendApdu.
+       * @details Process each MPDU received (UHF received data in transparent
+       * mode) until a full CSP packet is received or there is an error.
+       *
+       * @param uhfPayload
+       * @param payloadLength
+       *
+       * @return The status of the process operation.
        */
-      //      APDU::apdu_function_t sendApdu();
+      uint32_t processUHFPacket(const uint8_t *uhfPayload, const uint32_t payloadLength);
 
       /*!
-       * @brief Set the receive APDU function.
+       * @brief Reset the processing of received UHF data.
        *
-       * @details It's assumed that upper layer (Application) provides a
-       * function pointer that accepts APDUs from the MAC.
-       *
-       * @param[in] receiveApdu Pointer to the forwarding function
+       * @details Some kind of error (dropped packet, bad packet, etc.) has
+       * happened and the current CSP packet cannot be recovered. Reset the
+       * processing.
        */
-      //      void setReceiveApdu(APDU::apdu_function_t receiveApdu);
+      void resetUHFProcessing();
 
       /*!
-       * @brief The recommended APDU payload length in bytes.
+       * @brief A complete CSP packet is ready to be sent up to the the CSP Server.
        *
-       * @details If possible, the application should send APDUs of this payload
-       * length. Obviously, it's very likely the final APDU will be shorter, but
-       * when the MAC @p stop() or @p flush() methods are called.
-       *
-       * @return recommended APDU payload length in bytes.
+       * @return true if there is a CSP packet, false otherwise
        */
-      //      uint32_t apduPayloadLength() const;
-
-      /************************************************************************
-       * Functions to handle PHY Protocol Data Units to/from the lower layer
-       ***********************************************************************/
+      bool isCSPPacketReady();
 
       /*!
-       * @brief Set the send PPDU function.
+       * @brief Accessor
        *
-       * @details It's assumed that lower layer (PHY) provides a function
-       * pointer that accepts PPDUs from the MAC.
+       * @details After the CSP packet has been retrieved, call @p resetUHFProcessing.
        *
-       * @param[in] sendPpdu Pointer to the send function
+       * @return Pointer to the completed CSP packet.
        */
-      //      void setSendPpdu(PPDU_u8::ppdu_function_t sendPpdu);
+      csp_packet_t * getCSPPacket();
 
       /*!
-       * @brief Provide a function to receive PPDUs.
+       * @brief Receive a new CSP packet.
        *
-       * @details It's assumed that a lower layer (PHY) submits PPDUs to
-       * the MAC via @p receivePpdu.
+       * @details Initialize processing of the received CSP packet. This function
+       * should be followed by repeated calls to @p nextMPDU until all MPDUs
+       * corresponding to the current CSP have been created and transimitted.
        *
-       * @return receivePpdu Pointer to the receiving function
+       * @param cspPacket
+       *
+       * @return status of operation
        */
-      //      PPDU_f::ppdu_function_t receivePpdu();
-
+      uint32_t receiveCSPPacket(csp_packet_t * cspPacket);
 
       /*!
-       * @brief The task that receives CSP packets via a queue from the application layer.
+       * @brief A kind of iterator that provides MPDUs corresponding to a CSP packet.
        *
-       * @param taskParameters
+       * @todo need this?
+       *
+       * @details Each invocation of this function returns the next MPDU
+       * corresponding to a CSP packet that was passed to @p newCSPPacket.
+       *
+       * @param[in out] mpdu The MPDU contents are replaced by the next MPDU
+       * corresponding to the received CSP packet, or zeroed if there are no more.
+       *
+       * @return true if there is at least one more MPDU, in which case the @p
+       * mpdu contains a valid MPDU that should be transmitted. false if there
+       * are no more MPDUs.
        */
-      static void queueReceiveTask( void *taskParameters );
+      bool nextMPDU();//MPDU &mpdu);
 
       /*!
-       * @brief The task that sends CSP packets via a queue to the application layer.
+       * @brief Accessor
        *
-       * @param taskParameters
+       * @return The ErrorCorrectionScheme in use
        */
-      static void queueSendTask( void *taskParameters );
-
-      QueueHandle_t
-      getSendQueueHandle () const
+      ErrorCorrection::ErrorCorrectionScheme
+      getErrorCorrectionScheme () const
       {
-        return xSendQueue;
+        return m_errorCorrection->getErrorCorrectionScheme();
       }
 
-      QueueHandle_t
-      getRecvQueueHandle () const
+      /*!
+       * @brief Accessor
+       *
+       * @param ecScheme The ErrorCorrectionScheme to use
+       */
+      void
+      setErrorCorrectionScheme (
+        ErrorCorrection::ErrorCorrectionScheme ecScheme)
       {
-        return xRecvQueue;
+        // Lock things to ensure that a currently processing packet is incorrectly
+        // encoded or decoded
+        std::unique_lock<std::mutex> lck(m_ecSchemeMutex);
+        m_errorCorrection->setErrorCorrectionScheme(ecScheme);
+      }
+
+      /*!
+       * @brief Accessor
+       *
+       * @return The UHF Radio RF Mode in use
+       */
+      RF_Mode::RF_ModeNumber
+      getRFModeNumber () const
+      {
+        return m_rfModeNumber;
+      }
+
+      /*!
+       * @brief Accessor
+       *
+       * @param rfModeNumber The UHF Radio RF Mode to use
+       */
+      void
+      setRFModeNumber (
+        RF_Mode::RF_ModeNumber rfModeNumber)
+      {
+        m_rfModeNumber = rfModeNumber;
       }
 
     private:
 
       static MAC* m_instance;
-
-      QueueHandle_t xSendQueue = NULL;
-      QueueHandle_t xRecvQueue = NULL;
 
       /*!
        * @brief Constructor
@@ -197,11 +274,23 @@ namespace ex2
 
       bool isAX25Packet(std::vector<uint8_t> &packet);
 
-      void processReceivedCSP(csp_packet_t *packet);
+      ErrorCorrection *m_errorCorrection;
+
+      FEC *m_FEC;
 
       RF_Mode::RF_ModeNumber m_rfModeNumber;
-      ErrorCorrection::ErrorCorrectionScheme m_errorCorrectionScheme;
 
+      uint16_t m_numCodewordFragments;
+      uint16_t m_messageLength;
+
+      // Mutexs to ensure that in progress packet processing is not corrupted
+      // by an inadvertant change in FEC parameters
+      std::mutex m_ecSchemeMutex;
+
+      std::vector<uint8_t> m_receiveUHFBuffer;
+      std::vector<uint8_t> m_codewordBuffer;
+      uint32_t m_codewordFragmentCount;
+      uint32_t m_userPacketFragementCount;
     };
 
   } // namespace sdr

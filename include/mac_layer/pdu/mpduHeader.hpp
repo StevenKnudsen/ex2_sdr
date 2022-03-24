@@ -14,7 +14,6 @@
 #ifndef EX2_SDR_MAC_LAYER_PDU_FRAME_HEADER_H_
 #define EX2_SDR_MAC_LAYER_PDU_FRAME_HEADER_H_
 
-#include <chrono>
 #include <cstdint>
 #include <stdexcept>
 #include <vector>
@@ -22,6 +21,8 @@
 #include "error_correction.hpp"
 #include "pdu.hpp"
 #include "rfMode.hpp"
+
+#define TRANSPARENT_MODE_DATA_FIELD_2_MAX_LEN 128 // bytes
 
 namespace ex2 {
   namespace sdr {
@@ -39,16 +40,19 @@ namespace ex2 {
       /*!
        * @brief Constructor
        *
+       * @param[in] uhfPacketLength The UHF radio packet length (Data Field 1)
        * @param[in] modulation The UHF radio modulation (RF mode)
-       * @param[in] errorCorrectionScheme The error correction scheme
-       * @param[in] codewordFragmentIndex The index of the codeword
-       * @param[in] packetNumber The packet number
+       * @param[in] errorCorrection The error correction for this MPDU header
+       * @param[in] codewordFragmentIndex The index of the codeword fragment
+       * @param[in] userPacketLength The length of the original user (CSP) packet
+       * @param[in] userPacketFragmentIndex The current fragment of the user (CSP) packet
        */
-      MPDUHeader(const RF_Mode::RF_ModeNumber modulation,
-          const ErrorCorrection::ErrorCorrectionScheme errorCorrectionScheme,
-          const uint8_t codewordFragmentIndex,
-          const uint16_t userPacketLength,
-          const uint8_t userPacketFragmentIndex);
+      MPDUHeader(const uint8_t uhfPacketLength,
+        const RF_Mode::RF_ModeNumber modulation,
+        const ErrorCorrection &errorCorrection,
+        const uint8_t codewordFragmentIndex,
+        const uint16_t userPacketLength,
+        const uint8_t userPacketFragmentIndex);
 
       /*!
        * @brief Constructor
@@ -80,22 +84,85 @@ namespace ex2 {
         return k_MACHeaderLength;
       }
 
+      /*!
+       * @brief Accessor
+       * @return MAC payload length in bytes
+       */
+      static uint16_t
+      MACPayloadLength ()
+      {
+        return (uint16_t) TRANSPARENT_MODE_DATA_FIELD_2_MAX_LEN +
+            (uint16_t) k_MACHeaderLength / 0x0008;
+      }
+
+      /*!
+       * @brief Return the FEC scheme
+       *
+       * @return The FEC aka Error Correction scheme
+       */
+      ErrorCorrection::ErrorCorrectionScheme
+      getErrorCorrectionScheme() const
+      {
+        return m_errorCorrection.getErrorCorrectionScheme();
+      }
+
       uint8_t
-      getMCodewordFragmentIndex () const
+      getCodewordFragmentIndex () const
       {
         return m_codewordFragmentIndex;
       }
 
-      ErrorCorrection::ErrorCorrectionScheme
-      getMErrorCorrectionScheme () const
+      /*!
+       * @brief Return the FEC scheme codeword length
+       *
+       * @return FEC scheme codeword length in bits
+       */
+      uint32_t
+      getCodewordLength () const
       {
-        return m_errorCorrectionScheme;
+        return m_errorCorrection.getCodewordLen();
+      }
+
+      /*!
+       * @brief Return the FEC scheme message length
+       *
+       * @return FEC scheme message length in bits
+       */
+      uint32_t
+      getMessageLength () const
+      {
+        return m_errorCorrection.getMessageLen();
       }
 
       const std::vector<uint8_t>&
-      getMHeaderPayload () const
+      getHeaderPayload () const
       {
         return m_headerPayload;
+      }
+
+
+      RF_Mode::RF_ModeNumber
+      getRfModeNumber () const
+      {
+        return m_rfModeNumber;
+      }
+
+      uint16_t
+      getUserPacketFragmentIndex () const
+      {
+        return m_userPacketFragmentIndex;
+      }
+
+      uint16_t
+      getUserPacketLength () const
+      {
+        return m_userPacketLength;
+      }
+
+      uint8_t
+      getUhfPacketLength () const
+      {
+        return m_uhfPacketLength;
       }
 
       bool
@@ -103,25 +170,6 @@ namespace ex2 {
       {
         return m_headerValid;
       }
-
-      RF_Mode::RF_ModeNumber
-      getMRfModeNumber () const
-      {
-        return m_rfModeNumber;
-      }
-
-      uint16_t
-      getMUserPacketFragmentIndex () const
-      {
-        return m_userPacketFragmentIndex;
-      }
-
-      uint16_t
-      getMUserPacketLength () const
-      {
-        return m_userPacketLength;
-      }
-
     private:
 
       /*!
@@ -140,10 +188,13 @@ namespace ex2 {
           k_modulationFECScheme +
           k_codewordFragmentIndex +
           k_userPacketLength +
-          k_userPacketFragmentIndex;
+          k_userPacketFragmentIndex +
+          k_parityBits;
 
+      uint8_t m_uhfPacketLength;
       RF_Mode::RF_ModeNumber m_rfModeNumber;
-      ErrorCorrection::ErrorCorrectionScheme m_errorCorrectionScheme;
+      ErrorCorrection m_errorCorrection;
+//      ErrorCorrection::ErrorCorrectionScheme m_errorCorrectionScheme;
       uint8_t  m_codewordFragmentIndex;
       uint16_t m_userPacketLength;
       uint16_t m_userPacketFragmentIndex;

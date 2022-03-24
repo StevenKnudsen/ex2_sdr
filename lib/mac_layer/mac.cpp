@@ -13,16 +13,15 @@
 
 #include "mac.hpp"
 
-#include <functional>
+#include <cmath>
+#include <queue>
 #include <vector>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "HL_sci.h"
-#include "HL_reg_sci.h"
-#include "queue.h"
+#include "csp_buffer.h"
 
 #ifdef __cplusplus
 }
@@ -30,10 +29,14 @@ extern "C" {
 
 #include "golay.h"
 #include "mpdu.hpp"
+#include "radio.h"
+
 
 namespace ex2 {
   namespace sdr {
 
+//    MACException::MACException(const std::string& message) :
+//                       runtime_error(message) { }
 
     MAC* MAC::m_instance = 0;
 
@@ -50,161 +53,584 @@ namespace ex2 {
 
     MAC*
     MAC::instance() {
-      if (m_instance == 0)
+      // @todo Not sure a C program can handle an exception... remove?
+      if (m_instance == 0) {
         throw std::exception();
+      }
       return m_instance;
     }
 
-
     MAC::MAC (RF_Mode::RF_ModeNumber rfModeNumber,
       ErrorCorrection::ErrorCorrectionScheme errorCorrectionScheme) :
-                      m_rfModeNumber(rfModeNumber),
-                      m_errorCorrectionScheme(errorCorrectionScheme)
+                            m_rfModeNumber(rfModeNumber)
     {
-      xSendQueue = xQueueCreate( QUEUE_LENGTH, sizeof( uint32_t ) );
-      xRecvQueue = xQueueCreate( QUEUE_LENGTH, sizeof( uint32_t ) );
+      // TODO these are all updated when the error correction scheme changes
+      // TODO This instance may well have been created when the MAC system is initialized,
+      // which is a process TBD.
+      m_errorCorrection = new ErrorCorrection(errorCorrectionScheme);
 
-      if( xSendQueue != NULL )
-      {
-        /* Start the two tasks as described in the comments at the top of this
-        file. */
-        xTaskCreate( queueSendTask,     /* The function that implements the task. */
-          "SendToUHF",               /* The text name assigned to the task - for debug only as it is not used by the kernel. */
-          configMINIMAL_STACK_SIZE,     /* The size of the stack to allocate to the task. */
-          NULL,               /* The parameter passed to the task - not used in this simple case. */
-          mainQUEUE_RECEIVE_TASK_PRIORITY,/* The priority assigned to the task. */
-          NULL );             /* The task handle is not required, so NULL is passed. */
+      // Use the FEC factory to get the current FEC codec
+      m_FEC = FEC::makeFECCodec(errorCorrectionScheme);
 
+      // Calculate how many codeword fragments are needed to send one codeword
+      m_numCodewordFragments = m_errorCorrection->numCodewordFragments(MPDUHeader::MACPayloadLength());
+
+      if (m_errorCorrection->getCodewordLen() % MPDUHeader::MACHeaderLength() != 0)
+        m_numCodewordFragments++;
+      m_messageLength = m_errorCorrection->getMessageLen();
+
+      m_codewordFragmentCount = 0;
+      m_userPacketFragementCount = 0;
+      // @TODO, do we need a member var to keep track of the max packet frag count?
+    }
+
+    MAC::~MAC () {
+      if (m_errorCorrection != NULL) {
+        delete m_errorCorrection;
       }
     }
 
-    MAC::~MAC () { }
+    //    /*!
+    //     * @brief The task that receives UHF radio packets from the CSP server,
+    //     * breaks them into chunks that can be processed and fit into transparent
+    //     * packets, and passes those in order to the UHF radio.
+    //     *
+    //     * @details
+    //     *
+    //     * @todo refactor this?
+    //     *
+    //     * @param taskParameters
+    //     */    void
+    //     MAC::queueSendToUHFTask( void *taskParameters ) {
+    //       MAC *me = static_cast<MAC *>(taskParameters);
+    //       uint16_t currentBuffer = 0;
+    //       for (;;) {
+    //         // Get current buffer
+    //         csp_packet_t * packet = me->m_CSPToUHFBuffers[currentBuffer];
+    //
+    //         // Get CSP packet
+    //
+    //         // This task will block provided INCLUDE_vTaskSuspend is set to 1 in
+    //         // FreeRTOSConfig.h. No CPU time is used while in the blocked state
+    //         xQueueReceive( me->xSendToUHFQueue, packet, portMAX_DELAY );
+    //
+    //         if (packet) {
+    //           // Parse the packet into messages, encode, and send to UHF radio
+    //
+    //           // Determine how many transparent mode packet messages are in the
+    //           // CSP packet. Check for a remainder and round up as needed
+    //           uint16_t numMessages = packet->length / me->m_messageLength;
+    //           if (packet->length % me->m_messageLength != 0)
+    //             numMessages++;
+    //
+    //           std::vector<uint8_t> messageBuffer;
+    //           uint16_t cspBytesRemaining = packet->length;
+    //           uint32_t i;
+    //           uint16_t bytesToCopy = me->m_messageLength;
+    //           for (i = 0; i < numMessages; i++) {
+    //             if (cspBytesRemaining < me->m_messageLength) {
+    //               bytesToCopy = cspBytesRemaining;
+    //               // make sure the end of the buffer is zeros
+    //               messageBuffer.resize(me->m_messageLength, 0);
+    //             }
+    //
+    //             // copy part of the CSP packet into the messageBuffer
+    //             messageBuffer.assign(packet->data + i * me->m_messageLength,
+    //               packet->data + i * me->m_messageLength + bytesToCopy);
+    //
+    //             cspBytesRemaining -= bytesToCopy;
+    //             // TODO update MPDU parameters, encode message, make MPDU, then send via UART to radio
+    //
+    //           } // for all the messages in the CSP packet
+    //
+    //         } // packet is not null
+    //
+    //       } // for(ever)
+    //     }
+    //
+    //     /*!
+    //      * @brief The task that receives UHF radio packets, assembles them into CSP
+    //      * packets, and sends them via a queue to the CSP server.
+    //      *
+    //      * @details Packets come from the UHF radio via UART. They can be ESTTC or
+    //      * transparent mode packets. ESTTC packets should be valid since they are
+    //      * checked using the CRC16 defined for all but transparent mode packets, but
+    //      * some simple checks should be done before passing to the application layer
+    //      * (such as length consistency).
+    //      *
+    //      * Transparent mode packets are passed along regardless of the CRC16 check
+    //      * since we employ FEC; packets may have errors and still be correctable.
+    //      * Transparent mode packets are always 128 bytes. The MAC header is
+    //      * protected by Golay encoding and the payload by the selected FEC scheme.
+    //      * Thus, there is a check for length (128 bytes) and MAC header decoding
+    //      * success.
+    //      *
+    //      * @todo refactor this?
+    //      *
+    //      * @param taskParameters
+    //      */
+    //     void
+    //     MAC::queueReceiveFromUHFTask( void *taskParameters ) {
+    //       MAC *me = static_cast<MAC *>(taskParameters);
+    //
+    //       // TODO There needs to be a way to safely update the FEC scheme and/or
+    //       // the RF mode while this task is running and processing packets. Would
+    //       // be best done when we know no UART packets are arriving...
+    //
+    //       // TODO Let's assume no FEC scheme and default RF Mode for now.
+    //       // TODO Should these be task parameters?
+    //       ErrorCorrection::ErrorCorrectionScheme ecScheme = ErrorCorrection::ErrorCorrectionScheme::NO_FEC;
+    //       RF_Mode::RF_ModeNumber rfMode = RF_Mode::RF_ModeNumber::RF_MODE_3;
+    //
+    //       // TODO use the indices and packet len to check progress and for errors?
+    //       uint8_t cwFragIndex = 0;         // Nothing receive yet, so 0
+    //       uint16_t userPacketLen = 0;      // Nothing receive yet, so 0
+    //       uint8_t userPacketFragIndex = 0; // Nothing receive yet, so 0
+    //
+    //       std::vector<uint8_t> uartPacket; //
+    //       std::vector<uint8_t> cspData;
+    //       std::vector<uint8_t> codeword;
+    //
+    //       // Initialize things needed to recieve transparent mode packets from the UHF radio
+    //       bool goodUHFPacket = true;
+    //       uartPacket.resize(0);
+    //       cspData.resize(0);
+    //       codeword.resize(0);
+    //
+    //       for( ;; )
+    //       {
+    //         /*!
+    //          * Check sci for bytes. If we get some, we have to assume that the radio
+    //          * has passed a whole packet to us.
+    //          *
+    //          * In transparent mode the packet is supposed to be 128 bytes long. The
+    //          * first byte is Data Field 1, the packet length. If it is not 128, then
+    //          * either we have an bit error in that field, or maybe a AX.25 or ESTTC
+    //          * packet. All these possibilities must be checked.
+    //          */
+    //         if(sciIsRxReady(sciREG2) != 0) {
+    //
+    //           // A new packet arrived; get all the bytes. First byte is Data Field 1
+    //           uartPacket.resize(0);
+    //           uint8_t data = sciReceiveByte(sciREG2);
+    //           uartPacket.push_back(data);
+    //
+    //           // Get the rest of the bytes
+    //           while(sciIsRxReady(sciREG2)) {
+    //             data = sciReceiveByte(sciREG2);
+    //             uartPacket.push_back(data);
+    //           }
+    //
+    //           // Should be a complete packet in uartPacket. Get the length and check
+    //           // if ESTTC, AX.25, or transparent mode packet.
+    //           uint8_t packetLength = uartPacket[0];
+    //
+    //           // TODO Not sure we need to check for ESTTC or AX.25 packets. Arash and
+    //           // Charles say no, but thew work is partially done, so for now keep.
+    //           if (me->isESTTCPacket(uartPacket) || me->isAX25Packet(uartPacket)) {
+    //             // Send up to the CSP server
+    //             // TODO implement this!
+    //
+    //           }
+    //           else {
+    //             // Might be a transparent mode packet. Let's try to make an MPDU
+    //             try {
+    //               // make an MPDU, which does some checking of the data validity
+    //               MPDU recdMPDU(uartPacket);
+    //
+    //               // Valid MPDU, so add payload to current codeword
+    //               std::vector<uint8_t> cw = recdMPDU.getCodeword();
+    //               codeword.insert(codeword.end(), cw.begin(), cw.end());
+    //               cwFragIndex++;
+    //
+    //               if (codeword.size() > me->m_errorCorrection->getCodewordLen() ||
+    //                   (cwFragIndex > me->m_numCodewordFragments) ||
+    //                   (cwFragIndex != recdMPDU.getMpduHeader()->getCodewordFragmentIndex())) {
+    //                 // TODO this is an error. We need to dump the current codeword
+    //                 // and wait for a new UART packet codeword that starts at
+    //                 // index = 0
+    //               }
+    //               else {
+    //                 if (codeword.size() == me->m_errorCorrection->getCodewordLen()) {
+    //
+    //                   // We have the full codeword, so decode
+    //                   std::vector<uint8_t> message = me->m_errorCorrection->decode(codeword);
+    //
+    //                   if (message.size() > 0) {
+    //                     cspData.insert(cspData.end(), message.begin(), message.end());
+    //
+    //                     if (cspData.size() >= recdMPDU.getMpduHeader()->getUserPacketLength()) {
+    //                       // TODO Shouldn't be greater than the packet length in the
+    //                       // header, but maybe we send it anyway?
+    //
+    //                       // TODO inspect the cspData to make sure it is an actual
+    //                       // CSP packet. If it is, put on the queue up to the CSP
+    //                       // server
+    //
+    //                       // xQueuSend( ... )
+    //
+    //                       // Reset the buffers and counters
+    //                       cspData.resize(0);
+    //
+    //                     }
+    //                   }
+    //                 }
+    //               } // check for valid codeword
+    //               codeword.resize(0);
+    //             }
+    //             catch (MPDUException& e) {
+    //               // Log the error
+    //               //              std::cerr << e.what() << std::endl;
+    //               // TODO throw this error further?
+    //               //              throw e;
+    //               codeword.resize(0);
+    //             }
+    //
+    //           }
+    //
+    //         }
+    //
+    //       }
+    //
+    //     } // queueSendTask
 
-    void
-    MAC::queueReceiveTask( void *taskParameters ) {
+    uint32_t
+    MAC::processUHFPacket(const uint8_t *uhfPayload, const uint32_t payloadLength) {
+
+      uint32_t bitErrors = 0;
+
+      // Make an MPDU from the @p uhfPayload
+      std::vector<uint8_t> p;
+      p.assign(uhfPayload, uhfPayload+payloadLength);
+      MPDU mpdu(p);
+
+      // @todo mutex here?
+
+      // Process the MPDU
+      if (mpdu.getMpduHeader()->getUserPacketFragmentIndex() == 0 &&
+          mpdu.getMpduHeader()->getCodewordFragmentIndex() == 0) {
+        // this is the first user packet fragment and the first codeword fragment
+        // of that packet fragment, so we are receiving a new CSP packet
+
+        // New CSP packet, empty the buffer
+        // @todo rename this buffer?
+        m_receiveUHFBuffer.resize(0);
+        // New codeword, empty the buffer
+        m_codewordBuffer.resize(0);
+
+        // @TODO check that the header matches the FEC we are using?
+        // @TODO check it is long enough to have the CSP info needed
+
+        // append the current uhf payload to the codeword buffer
+        m_codewordBuffer.insert(m_codewordBuffer.end(), p.begin(), p.end());
+
+        // @todo get the expected number of codeword and packet fragments
+        // Should be a static function in ErrorCorrection
+
+        // Init fragment counters
+        m_codewordFragmentCount = 1;
+        m_userPacketFragementCount = 0;
+
+        // @TODO Update counters and check for counters complete.
+        // Do we need only the one packet?
+        if (m_codewordFragmentCount == m_numCodewordFragments) {
+          PPDU_u8::payload_t decodedPayload;
+          bitErrors = m_FEC->decode(mpdu.getCodeword(), 100.0, decodedPayload);
+
+          // @TODO check bitErrors and reject/reset if too many?
+
+          // @todo Arash comment : If only FEC detects more errors than it can correct. I didn't see such an option in
+          // Phil Karn's decoder. The isPacket = true checks should suffice IMHO
+
+
+        }
+//        m_userPacketFragementCount = 0;
+
+      }
+      else {
+
+      }
+
+      return bitErrors;
+      //
+      //       // TODO There needs to be a way to safely update the FEC scheme and/or
+      //       // the RF mode while this task is running and processing packets. Would
+      //       // be best done when we know no UART packets are arriving...
+      //
+      //
+      //       // TODO use the indices and packet len to check progress and for errors?
+      //       uint8_t cwFragIndex = 0;         // Nothing receive yet, so 0
+      //       uint16_t userPacketLen = 0;      // Nothing receive yet, so 0
+      //       uint8_t userPacketFragIndex = 0; // Nothing receive yet, so 0
+      //
+      //       std::vector<uint8_t> uartPacket; //
+      //       std::vector<uint8_t> cspData;
+      //       std::vector<uint8_t> codeword;
+      //
+      //       // Initialize things needed to recieve transparent mode packets from the UHF radio
+      //       bool goodUHFPacket = true;
+      //       uartPacket.resize(0);
+      //       cspData.resize(0);
+      //       codeword.resize(0);
+      //
+      //       for( ;; )
+      //       {
+      //         /*!
+      //          * Check sci for bytes. If we get some, we have to assume that the radio
+      //          * has passed a whole packet to us.
+      //          *
+      //          * In transparent mode the packet is supposed to be 128 bytes long. The
+      //          * first byte is Data Field 1, the packet length. If it is not 128, then
+      //          * either we have an bit error in that field, or maybe a AX.25 or ESTTC
+      //          * packet. All these possibilities must be checked.
+      //          */
+      //         if(sciIsRxReady(sciREG2) != 0) {
+      //
+      //           // A new packet arrived; get all the bytes. First byte is Data Field 1
+      //           uartPacket.resize(0);
+      //           uint8_t data = sciReceiveByte(sciREG2);
+      //           uartPacket.push_back(data);
+      //
+      //           // Get the rest of the bytes
+      //           while(sciIsRxReady(sciREG2)) {
+      //             data = sciReceiveByte(sciREG2);
+      //             uartPacket.push_back(data);
+      //           }
+      //
+      //           // Should be a complete packet in uartPacket. Get the length and check
+      //           // if ESTTC, AX.25, or transparent mode packet.
+      //           uint8_t packetLength = uartPacket[0];
+      //
+      //           // TODO Not sure we need to check for ESTTC or AX.25 packets. Arash and
+      //           // Charles say no, but thew work is partially done, so for now keep.
+      //           if (me->isESTTCPacket(uartPacket) || me->isAX25Packet(uartPacket)) {
+      //             // Send up to the CSP server
+      //             // TODO implement this!
+      //
+      //           }
+      //           else {
+      //             // Might be a transparent mode packet. Let's try to make an MPDU
+      //             try {
+      //               // make an MPDU, which does some checking of the data validity
+      //               MPDU recdMPDU(uartPacket);
+      //
+      //               // Valid MPDU, so add payload to current codeword
+      //               std::vector<uint8_t> cw = recdMPDU.getCodeword();
+      //               codeword.insert(codeword.end(), cw.begin(), cw.end());
+      //               cwFragIndex++;
+      //
+      //               if (codeword.size() > me->m_errorCorrection->getCodewordLen() ||
+      //                   (cwFragIndex > me->m_numCodewordFragments) ||
+      //                   (cwFragIndex != recdMPDU.getMpduHeader()->getCodewordFragmentIndex())) {
+      //                 // TODO this is an error. We need to dump the current codeword
+      //                 // and wait for a new UART packet codeword that starts at
+      //                 // index = 0
+      //               }
+      //               else {
+      //                 if (codeword.size() == me->m_errorCorrection->getCodewordLen()) {
+      //
+      //                   // We have the full codeword, so decode
+      //                   std::vector<uint8_t> message = me->m_errorCorrection->decode(codeword);
+      //
+      //                   if (message.size() > 0) {
+      //                     cspData.insert(cspData.end(), message.begin(), message.end());
+      //
+      //                     if (cspData.size() >= recdMPDU.getMpduHeader()->getUserPacketLength()) {
+      //                       // TODO Shouldn't be greater than the packet length in the
+      //                       // header, but maybe we send it anyway?
+      //
+      //                       // TODO inspect the cspData to make sure it is an actual
+      //                       // CSP packet. If it is, put on the queue up to the CSP
+      //                       // server
+      //
+      //                       // xQueuSend( ... )
+      //
+      //                       // Reset the buffers and counters
+      //                       cspData.resize(0);
+      //
+      //                     }
+      //                   }
+      //                 }
+      //               } // check for valid codeword
+      //               codeword.resize(0);
+      //             }
+      //             catch (MPDUException& e) {
+      //               // Log the error
+      //               //              std::cerr << e.what() << std::endl;
+      //               // TODO throw this error further?
+      //               //              throw e;
+      //               codeword.resize(0);
+      //             }
+      //
+      //           }
+      //
+      //         }
+      //
+      //       }
+      //
 
     }
 
     /*!
-     * @brief The task that receives UHF radio packets, assembles them into CSP
-     * packets, and sends them via a queue to the application layer.
+     * @brief Reset the processing of received UHF data.
      *
-     * @details Packets come from the UHF radio via UART. They can be ESTTC or
-     * transparent mode packets. ESTTC packets should be valid since they are
-     * checked using the CRC16 defined for all but transparent mode packets, but
-     * some simple checks should be done before passing to the application layer
-     * (such as length consistency).
-     *
-     * Transparent mode packets are passed along regardless of the CRC16 check
-     * since we employ FEC; packets may have errors and still be correctable.
-     * Transparent mode packets are always 128 bytes. The MAC header is
-     * protected by Golay encoding and the payload by the selected FEC scheme.
-     * Thus, there is a check for length (128 bytes) and MAC header decoding
-     * success.
-     *
-     * @param taskParameters
+     * @details Some kind of error (dropped packet, bad packet, etc.) has
+     * happened and the current CSP packet cannot be recovered. Reset the
+     * processing.
      */
     void
-    MAC::queueSendTask( void *taskParameters ) {
-
-      std::vector<uint8_t> uartPacket; //
-      std::vector<uint8_t> cspData;
-      uint16_t tmPacketIndex = 0;
-
-      std::vector<MPDU> codewordFragments;
-
-      // Initialize things needed to recieve transparent mode packets from the UHF radio
-      bool goodUHFPacket = true;
-
-      for( ;; )
-      {
-
-        /*!
-         * Check sci for bytes. If we get some, we have to assume that the radio
-         * has passed a whole packet to us.
-         *
-         * In transparent mode the packet is supposed to be 128 bytes long. The
-         * first byte is Data Field 1, the packet length. If it is not 128, then
-         * either we have an bit error in that field, or maybe a AX.25 or ESTTC
-         * packet. All these possibilities must be checked.
-         */
-
-        if(sciIsRxReady(sciREG2) != 0) {
-
-          // A new packet arrived; get all the bytes. First byte is Data Field 1
-          uartPacket.resize(0);
-          uint8_t data = sciReceiveByte(sciREG2);
-          uartPacket.push_back(data);
-
-          // Get the rest of the bytes
-          while(sciIsRxReady(sciREG2)) {
-            data = sciReceiveByte(sciREG2);
-            uartPacket.push_back(data);
-          }
-
-          // Should be a complete packet in uartPacket. Get the length and check
-          // if ESTTC, AX.25, or transparent mode packet.
-          uint8_t packetLength = uartPacket[0];
-
-          if (isESTTCPacket(uartPacket) || isAX25Packet(uartPacket)) {
-            // Send up to the CSP server
-            // TODO implement this!
-
-          }
-          else {
-            // Might be a transparent mode packet. Let's try to make an MPDU
-            try {
-              MPDU recdMPDU(uartPacket);
-
-            }
-            catch (MPDUHeaderException& e) {
-              std::cerr << e.what() << std::endl;
-              throw e;
-            }
-
-          }
-
-          // First byte we are receiving?
-          if (tmPacketIndex == 0) {
-            // Check for
-            if (data != 128) {
-              goodUHFPacket = false;
-            }
-            while (sciIsRxReady(sciREG2) && tmPacketIndex < 128) {
-              uartPacket[tmPacketIndex] = sciReceiveByte(sciREG2);
-              tmPacketIndex++;
-            }
-            if (!goodUHFPacket) { // could still be ESTTC
-              if (uartPacket[0] == 'E' && uartPacket[1] == 'S' && uartPacket[2] == '+') {
-                csp_packet_t * packet = csp_buffer_get(tmPacketIndex);
-                if (packet == NULL) {
-                  /* Could not get buffer element */
-                  csp_log_error("Failed to get CSP buffer");
-                }
-                else {
-                  memcpy((char *) packet->data, &uartPacket.front(), tmPacketIndex);
-                  packet->length = (strlen((char *) packet->data) + 1); /* include the 0 termination */
-                  // enqueue the packet
-                }
-              }
-            }
-            else {
-              // decode transparent mode packet
-
-              // check that we are expecting this packet, if we are, append the data to the payload
-            }
-          }
-        }
-
-        // If bytes,
-        /* Send to the queue - causing the queue receive task to unblock and
-        write to the console.  0 is used as the block time so the send operation
-        will not block - it shouldn't need to block as the queue should always
-        have at least one space at this point in the code. */
-        //        xQueueSend( xQueue, &ulValueToSend, 0U );
-      }
+    MAC::resetUHFProcessing() {
 
     }
+
+    /*!
+     * @brief A complete CSP packet is ready to be sent up to the the CSP Server.
+     *
+     * @return true if there is a CSP packet, false otherwise
+     */
+    bool
+    MAC::isCSPPacketReady() {
+
+      // @TODO implement function
+      return false;
+
+    }
+
+    /*!
+     * @brief Accessor
+     *
+     * @details After the CSP packet has been retrieved, call @p resetUHFProcessing.
+     *
+     * @return Pointer to the completed CSP packet.
+     */
+    csp_packet_t *
+    MAC::getCSPPacket() {
+
+      // @TODO implement function
+      return NULL;
+    }
+
+    /*!
+     * @brief Receive a new CSP packet.
+     *
+     * @details Initialize processing of the received CSP packet. This function
+     * should be followed by repeated calls to @p nextMPDU until all MPDUs
+     * corresponding to the current CSP have been created and transimitted.
+     *
+     * @param[in] cspPacket The CSP packet to be transmitted by the UHF radio.
+     *
+     * @return status of the operation
+     */
+    uint32_t
+    MAC::receiveCSPPacket(csp_packet_t * cspPacket) {
+      // Lock the error correction scheme so that all of this
+      // csp packet is processed using the same FEC scheme
+      std::unique_lock<std::mutex> lck(m_ecSchemeMutex); // how to do this for the whole receive process?
+
+
+      std::queue<PPDU_u8::payload_t> mpduFIFO;
+      // prepare for chunking up the packet, encoding chunks, and passing them
+      // to a listener for action.
+
+      // Everything is done in units of bytes
+
+      uint32_t const numMPDUs = MPDU::numberOfMPDUs(cspPacket, *m_errorCorrection);
+      uint16_t const cspPacketLength = sizeof(csp_packet_t) + cspPacket->length;
+      uint32_t const messageLength = m_errorCorrection->getMessageLen() / 8;
+      // @todo should we check that the message length is > the sizeof(csp_packet_t)?
+      // If not, there is no point in doing this...
+
+      // The messageBuffer is always assumed to be the same. That is, we send whole
+      // codewords. At the end of the csp packet, if needed, the messageBuffer is padded.
+
+      PPDU_u8::payload_t rawCSP;
+
+      // Keep track of how much CSP packet data has been encoded
+      uint32_t cspDataOffset = 0;
+
+      uint32_t cspBytesRemaining = cspPacketLength;
+
+      // The first chunk is special because we encode the csp_packet_t struct
+      // members.
+
+      // Insert the padding, the length, and the id, then enough data to fill
+      // the buffer, or if not enough available, what is available and then pad
+      rawCSP.resize(0);
+      rawCSP.insert(rawCSP.end(), cspPacket->padding, cspPacket->padding + CSP_PADDING_BYTES);
+      cspBytesRemaining -= CSP_PADDING_BYTES;
+      rawCSP.push_back((uint8_t) ((cspPacket->length & 0xFF00) >> 8));
+      rawCSP.push_back((uint8_t) (cspPacket->length & 0x00FF));
+      cspBytesRemaining -= sizeof(uint16_t);
+      rawCSP.push_back((uint8_t) ((cspPacket->id.ext & 0xFF000000) >> 24));
+      rawCSP.push_back((uint8_t) ((cspPacket->id.ext & 0x00FF0000) >> 16));
+      rawCSP.push_back((uint8_t) ((cspPacket->id.ext & 0x0000FF00) >> 8));
+      rawCSP.push_back((uint8_t) (cspPacket->id.ext & 0x000000FF));
+      cspBytesRemaining -= sizeof(uint32_t);
+
+      if (cspBytesRemaining > 0 && rawCSP.size() < messageLength) {
+        // Check if we can fill the rest of the message
+        if (cspBytesRemaining > messageLength - rawCSP.size()) {
+          rawCSP.insert(rawCSP.end(), cspPacket->data, cspPacket->data + (messageLength - rawCSP.size()));
+          cspDataOffset += (messageLength - rawCSP.size());
+          cspBytesRemaining -= (messageLength - rawCSP.size());
+        }
+        else {
+          rawCSP.insert(rawCSP.end(), cspPacket->data, cspPacket->data + cspBytesRemaining);
+          cspBytesRemaining -= cspBytesRemaining;
+          const size_t numZeros = messageLength - rawCSP.size();
+          rawCSP.resize(rawCSP.size() + numZeros, 0);
+        }
+      }
+      PPDU_u8 chunk(rawCSP);
+      PPDU_u8 encodedChunk = m_FEC->encode(chunk);
+
+
+      // @todo use accessor to update header indices
+      MPDUHeader mpduHeader(UHF_TRANSPARENT_MODE_PACKET_LENGTH,
+        m_rfModeNumber,
+        *m_errorCorrection,
+        0, cspPacketLength, 0);
+      MPDU mpdu(mpduHeader, encodedChunk.getPayload());
+      mpduFIFO.push(mpdu.getRawMPDU());
+
+      // is there another chunk needed to make the codeword?
+
+
+      for (uint32_t m = 1; m < numMPDUs; m++) {
+
+        // new mpdu header with current counts
+
+        // get current csp data
+//        std::vector<uint8_t> cspChunk(m_cspChunk(cspPacket, cspPacketLength, cspMessageOffset),);
+
+        // make MPDU
+
+        // Notify listener a packet is ready
+
+      }
+      return 0;
+    }
+
+    /*!
+     * @brief A kind of iterator that provides MPDUs corresponding to a CSP packet.
+     *
+     * @details Each invocation of this function returns the next MPDU
+     * corresponding to a CSP packet that was passed to @p newCSPPacket.
+     *
+     * @param[in out] mpdu The MPDU contents are replaced by the next MPDU
+     * corresponding to the received CSP packet, or zeroed if there are no more.
+     *
+     * @return true if there is at least one more MPDU, in which case the @p
+     * mpdu contains a valid MPDU that should be transmitted. false if there
+     * are no more MPDUs.
+     */
+    bool
+    MAC::nextMPDU(){//MPDU &mpdu){
+
+      // @TODO implement function
+      return false;
+    }
+
 
     bool
     MAC::isESTTCPacket(std::vector<uint8_t> &packet) {
@@ -212,7 +638,7 @@ namespace ex2 {
       // First byte should be the Data Field 1, the Data Field 2 length in bytes
       // Thus, the length of packet should be the value of the first byte + 1
 
-      if (packet[0] + 1 == packet.size()) {
+      if ((uint32_t)(packet[0] + 1) == packet.size()) {
         if ((packet[1] == 'E') &&
             (packet[2] == 'S') &&
             (packet[3] == '+')) {
@@ -244,7 +670,7 @@ namespace ex2 {
       // First byte should be the Data Field 1, the Data Field 2 length in bytes
       // Thus, the length of packet should be the value of the first byte + 1
 
-      if (packet[0] + 1 == packet.size()) {
+      if ((uint32_t)(packet[0] + 1) == packet.size()) {
         // The AX.25 frame starts with 9 bytes that have the value 0x7E
         uint8_t i;
         isPacket = true;
@@ -256,9 +682,6 @@ namespace ex2 {
       return isPacket;
 
     }
-
-    void processReceivedCSP(csp_packet_t *packet);
-
 
   } /* namespace sdr */
 } /* namespace ex2 */
