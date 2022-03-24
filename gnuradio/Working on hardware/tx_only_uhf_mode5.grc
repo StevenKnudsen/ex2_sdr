@@ -128,6 +128,60 @@ blocks:
     coordinate: [872, 12.0]
     rotation: 0
     state: enabled
+- name: blocks_message_strobe_0
+  id: blocks_message_strobe
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    msg: 'pmt.dict_add( pmt.make_dict(), pmt.to_pmt(''gpio''), pmt.to_pmt({''bank'':''FP0'',
+      ''attr'':''ATR_TX'', ''value'': 1, ''mask'': ((1 << 11) - 1)}))'
+    period: '10000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [952, 220.0]
+    rotation: 0
+    state: true
+- name: blocks_message_strobe_0_0
+  id: blocks_message_strobe
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    msg: 'pmt.dict_add( pmt.make_dict(), pmt.to_pmt(''gpio''), pmt.to_pmt({''bank'':''FP0'',
+      ''attr'':''CTRL'', ''value'': 1, ''mask'': ((1 << 11) - 1)}))'
+    period: '7000'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1168, 300.0]
+    rotation: 0
+    state: true
+- name: blocks_message_strobe_0_0_0
+  id: blocks_message_strobe
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    msg: 'pmt.dict_add( pmt.make_dict(), pmt.to_pmt(''gpio''), pmt.to_pmt({''bank'':''FP0'',
+      ''attr'':''DDR'', ''value'': 1, ''mask'': ((1 << 11) - 1)}))'
+    period: '8500'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1200, 396.0]
+    rotation: 0
+    state: true
 - name: blocks_pdu_to_tagged_stream_0
   id: blocks_pdu_to_tagged_stream
   parameters:
@@ -683,11 +737,14 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1144, 132.0]
+    coordinate: [1184, 124.0]
     rotation: 0
     state: enabled
 
 connections:
+- [blocks_message_strobe_0, strobe, uhd_usrp_sink_0, command]
+- [blocks_message_strobe_0_0, strobe, uhd_usrp_sink_0, command]
+- [blocks_message_strobe_0_0_0, strobe, uhd_usrp_sink_0, command]
 - [blocks_pdu_to_tagged_stream_0, '0', blocks_unpacked_to_packed_xx_0, '0']
 - [blocks_socket_pdu_1, pdus, blocks_pdu_to_tagged_stream_0, pdus]
 - [blocks_unpacked_to_packed_xx_0, '0', digital_gfsk_mod_0, '0']
