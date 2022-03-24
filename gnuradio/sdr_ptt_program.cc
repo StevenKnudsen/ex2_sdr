@@ -1,5 +1,7 @@
 //compile and then run using commands:
 //
+// pmt.dict(("bank":"gpio"), ("attr":"ATR_TX"), ("value":1), ("mask":1))
+
 //    g++ -o sdr_ptt_program sdr_ptt_program.cc -lboost_program_options -luhd
 //    ./sdr_ptt_program
 //
@@ -63,12 +65,12 @@ void output_reg_values(const std::string& bank,
 
     // GPIO Src - get_gpio_src() not supported for all devices
     try {
-        const auto gpio_src = usrp->get_gpio_src(port);
-        std::cout << boost::format("%10s:") % "SRC";
-        for (auto src : gpio_src) {
-            std::cout << " " << src;
-        }
-        std::cout << std::endl;
+        // const auto gpio_src = usrp->get_gpio_src(port);
+        // std::cout << boost::format("%10s:") % "SRC";
+        // for (auto src : gpio_src) {
+        //     std::cout << " " << src;
+        // }
+        // std::cout << std::endl;
     } catch (const uhd::not_implemented_error& e) {
         std::cout << "Ignoring " << e.what() << std::endl;
     } catch (...) {
@@ -85,8 +87,8 @@ int main(void){
     std::string gpio = GPIO_DEFAULT_GPIO;//removed default_value() function
     std::string port = port;
     size_t num_bits = GPIO_DEFAULT_NUM_BITS;
-    
-    
+
+
         // setup the program options
     po::options_description desc("Allowed options");
     // clang-format off
@@ -102,12 +104,13 @@ int main(void){
         ("out", po::value<std::string>(&out_str)->default_value(GPIO_DEFAULT_OUT), "GPIO OUT reg value")
     ;
 
+    // uhd::device_addr_t dev_addr;
+    // dev_addr = "31E54BA";
     // create a usrp device
     std::cout << std::endl;
     std::cout << boost::format("Creating the usrp device with: %s...") % args
               << std::endl;
     uhd::usrp::multi_usrp::sptr usrp = uhd::usrp::multi_usrp::make(args);//run gnuradio flow first
-    //uhd::usrp::multi_usrp::sptr usrp = uhd::usrp::multi_usrp::
     std::cout << boost::format("Using Device: %s") % usrp->get_pp_string() << std::endl;
 
     //available gpio banks:
@@ -116,7 +119,7 @@ int main(void){
     for (auto& bank : banks) {
         std::cout << "* " << bank << std::endl;
     }
-        
+
     std::cout << "Using GPIO bank: " << gpio << std::endl;
 
     // print out initial unconfigured state of GPIO
@@ -137,7 +140,7 @@ int main(void){
     ctrl |= GPIO_BIT(0);
     ddr |= GPIO_BIT(0);
     atr_tx |= GPIO_BIT(0);
-    
+
     /*
 
     // set GPIO driver source (Not sure if necessary)
@@ -148,7 +151,7 @@ int main(void){
         std::copy(tokens.begin(), tokens.end(), std::back_inserter(gpio_src));
         usrp->set_gpio_src(port, gpio_src);
     }
-    
+
     */
 
     // set data direction register (DDR)

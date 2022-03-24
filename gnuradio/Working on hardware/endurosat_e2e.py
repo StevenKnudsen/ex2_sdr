@@ -35,6 +35,8 @@ from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import uhd
 import time
+import uhd
+
 
 
 
@@ -99,10 +101,21 @@ class endurosat_e2e(gr.top_block, Qt.QWidget):
         )
         self.uhd_usrp_sink_0.set_samp_rate(baud_bit*spsym)
         self.uhd_usrp_sink_0.set_time_now(uhd.time_spec(time.time()), uhd.ALL_MBOARDS)
+        
 
         self.uhd_usrp_sink_0.set_center_freq(center_freq, 0)
         self.uhd_usrp_sink_0.set_antenna('TX/RX', 0)
         self.uhd_usrp_sink_0.set_gain(tx_gain, 0)
+        
+        #
+        #
+        #
+        #
+        #Josh Experimental gpio
+        
+        
+        
+        
         self.qtgui_time_sink_x_0 = qtgui.time_sink_c(
             spsym*50, #size
             spsym*50, #samp_rate
